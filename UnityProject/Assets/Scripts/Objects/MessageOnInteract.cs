@@ -1,23 +1,14 @@
-﻿using JetBrains.Annotations;
-using PlayGroups.Input;
-using UI;
-using UnityEngine;
+﻿using UnityEngine;
 
-
-public class MessageOnInteract : InputTrigger
+/// <summary>
+/// Component which causes the server to send an examine message to the player who clicks the object it's on.
+/// </summary>
+public class MessageOnInteract : NBHandApplyInteractable
 {
 	public string Message;
-	// Use this for initialization
-	void Start () {
-	}
-	
-	// Update is called once per frame
-	void Update () {
-		
-	}
-	public override void Interact(GameObject originator, Vector3 position, string hand)
-	{
-		UIManager.Chat.AddChatEvent(new ChatEvent(Message, ChatChannel.Examine));
-	}
 
+	protected override void ServerPerformInteraction(HandApply interaction)
+	{
+		UpdateChatMessage.Send(interaction.Performer, ChatChannel.Examine, Message);
+	}
 }

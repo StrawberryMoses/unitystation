@@ -1,41 +1,19 @@
 ﻿using UnityEngine;
 
-namespace Tilemaps.Tiles
+
+public class LayerTile : GenericTile
 {
-	public enum LayerType
+	private static LayerTile emptyTile;
+
+	public static LayerTile EmptyTile => emptyTile ? emptyTile : (emptyTile = CreateInstance<LayerTile>());
+
+	public LayerType LayerType;
+	public TileType TileType;
+
+	public LayerTile[] RequiredTiles;
+
+	public virtual Matrix4x4 Rotate(Matrix4x4 transformMatrix, bool anticlockwise = true, int count = 1)
 	{
-		Walls,
-		Windows,
-		Objects,
-		Floors,
-		Base,
-		None,
-		TopLayerEffects
-	}
-
-	public enum TileType
-	{
-		None,
-		Wall,
-		Window,
-		Floor,
-		Table,
-		TopLayerEffects
-	}
-
-	public class LayerTile : GenericTile
-	{
-		private static LayerTile _emptyTile;
-
-		public LayerType LayerType;
-
-		public LayerTile[] RequiredTiles;
-		public TileType TileType;
-		public static LayerTile EmptyTile => _emptyTile ?? (_emptyTile = CreateInstance<LayerTile>());
-
-		public virtual Matrix4x4 Rotate(Matrix4x4 transformMatrix, bool anticlockwise = true, int count = 1)
-		{
-			return transformMatrix;
-		}
+		return transformMatrix;
 	}
 }

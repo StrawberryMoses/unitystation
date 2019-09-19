@@ -1,21 +1,20 @@
 ﻿using System.Collections;
-using Tilemaps;
 using UnityEngine;
 using UnityEngine.Networking;
 
-namespace NPC
-{
+
 	public class RandomMove : NetworkBehaviour
 	{
-		private HealthBehaviour _healthBehaviour;
+		private LivingHealthBehaviour _healthBehaviour;
 		private Matrix _matrix;
 		private Vector3Int currentPosition, targetPosition, currentDirection;
 		private bool isRight;
+		private Coroutine coRandMove;
 		public float speed = 6f;
 
 		private void Start()
 		{
-			_healthBehaviour = GetComponent<HealthBehaviour>();
+			_healthBehaviour = GetComponent<LivingHealthBehaviour>();
 			targetPosition = Vector3Int.RoundToInt(transform.position);
 			currentPosition = targetPosition;
 		}
@@ -30,9 +29,9 @@ namespace NPC
 
 		public override void OnStartServer()
 		{
-			if (isServer)
+			if (isServer && coRandMove == null)
 			{
-				StartCoroutine(RandMove());
+				coRandMove = StartCoroutine(RandMove());
 			}
 			base.OnStartServer();
 		}
@@ -47,7 +46,10 @@ namespace NPC
 
 		private void OnDisable()
 		{
-			StopCoroutine(RandMove());
+			if (coRandMove != null) {
+				StopCoroutine(coRandMove);
+				coRandMove = null;
+			}
 		}
 
 		private void OnTriggerExit2D(Collider2D coll)
@@ -63,7 +65,7 @@ namespace NPC
 		private IEnumerator RandMove()
 		{
 			float ranTime = Random.Range(2f, 10f);
-			yield return new WaitForSeconds(ranTime);
+			yield return WaitFor.Seconds(ranTime);
 
 			int ranDir = Random.Range(0, 4);
 
@@ -99,7 +101,7 @@ namespace NPC
 				}
 			}
 
-			yield return new WaitForSeconds(0.2f);
+			yield return WaitFor.Seconds(0.2f);
 
 			StartCoroutine(RandMove());
 		}
@@ -118,20 +120,20 @@ namespace NPC
 			Vector3Int horizontal = Vector3Int.Scale(direction, Vector3Int.right);
 			Vector3Int vertical = Vector3Int.Scale(direction, Vector3Int.up);
 
-			if (_matrix.IsPassableAt(currentPosition + direction))
+			if (_matrix.IsPassableAt(currentPosition + direction, true))
 			{
-				if (_matrix.IsPassableAt(currentPosition + horizontal) ||
-				    _matrix.IsPassableAt(currentPosition + vertical))
+				if (_matrix.IsPassableAt(currentPosition + horizontal, true) ||
+				    _matrix.IsPassableAt(currentPosition + vertical, true))
 				{
 					targetPosition = currentPosition + direction;
 					return true;
 				}
 			}
 
-			if (_matrix.IsPassableAt(currentPosition + direction))
+			if (_matrix.IsPassableAt(currentPosition + direction, true))
 			{
-				if (_matrix.IsPassableAt(currentPosition + horizontal) ||
-				    _matrix.IsPassableAt(currentPosition + vertical))
+				if (_matrix.IsPassableAt(currentPosition + horizontal, true) ||
+				    _matrix.IsPassableAt(currentPosition + vertical, true))
 				{
 					targetPosition = currentPosition + direction;
 					return true;
@@ -139,12 +141,12 @@ namespace NPC
 			}
 			else if (horizontal != Vector3.zero && vertical != Vector3.zero)
 			{
-				if (_matrix.IsPassableAt(currentPosition + horizontal))
+				if (_matrix.IsPassableAt(currentPosition + horizontal, true))
 				{
 					targetPosition = currentPosition + horizontal;
 					return true;
 				}
-				if (_matrix.IsPassableAt(currentPosition + vertical))
+				if (_matrix.IsPassableAt(currentPosition + vertical, true))
 				{
 					targetPosition = currentPosition + vertical;
 					return true;
@@ -153,4 +155,3 @@ namespace NPC
 			return false;
 		}
 	}
-}

@@ -1,213 +1,233 @@
-﻿using PlayGroup;
+using System.Collections;
+using System.Collections.Generic;
+using System.Linq;
 using UnityEngine;
 using UnityEngine.UI;
+using UnityEngine.Networking;
 
-namespace UI
+public class UIManager : NetworkBehaviour
 {
-	public class UIManager : MonoBehaviour
+	private static UIManager uiManager;
+	public GUI_VariableViewer VariableViewer;
+	public BookshelfViewer BookshelfViewer;
+	public ControlAction actionControl;
+	public DragAndDrop dragAndDrop;
+	public ControlDisplays displayControl;
+	public DisplayManager displayManager;
+	public Hands hands;
+	public ControlIntent intentControl;
+	public InventorySlotCache inventorySlotCache;
+	public PlayerHealthUI playerHealthUI;
+	public PlayerListUI playerListUIControl;
+	public AlertUI alertUI;
+	public Text toolTip;
+	public Text pingDisplay;
+	public ControlWalkRun walkRunControl;
+	public UI_StorageHandler storageHandler;
+	public ZoneSelector zoneSelector;
+	public bool ttsToggle;
+	public static GamePad GamePad => Instance.gamePad;
+	public GamePad gamePad;
+	[HideInInspector]
+	public ProgressBar progressBar;
+
+	///Global flag for focused input field. Movement keystrokes are ignored if true.
+	/// <see cref="InputFieldFocus"/> handles this flag automatically
+	public static bool IsInputFocus
 	{
-		private static UIManager uiManager;
-		public ControlAction actionControl;
-		public ControlChat chatControl;
-		public ControlDisplays displayControl;
-		public DisplayManager displayManager;
-		public Hands hands;
-		public ControlIntent intentControl;
-		public InventorySlotCache inventorySlotCache;
-		public PlayerHealthUI playerHealthUI;
-		public PlayerListUI playerListUIControl;
-		public Text toolTip;
-		public ControlWalkRun walkRunControl;
-        
-
-		public static UIManager Instance
+		get
 		{
-			get
-			{
-				if (!uiManager)
-				{
-					uiManager = FindObjectOfType<UIManager>();
-				}
-
-				return uiManager;
-			}
+			return Instance && Instance.isInputFocus;
 		}
-
-		public static ControlChat Chat => Instance.chatControl;
-
-		public static PlayerHealthUI PlayerHealthUI => Instance.playerHealthUI;
-
-		public static Hands Hands => Instance.hands;
-
-		public static ControlIntent Intent => Instance.intentControl;
-
-		public static ControlAction Action => Instance.actionControl;
-
-		public static ControlWalkRun WalkRun => Instance.walkRunControl;
-
-		public static ControlDisplays Display => Instance.displayControl;
-
-		public static PlayerListUI PlayerListUI => Instance.playerListUIControl;
-
-		public static DisplayManager DisplayManager => Instance.displayManager;
-
-		public static string SetToolTip
+		set
 		{
-			set { Instance.toolTip.text = value; }
-		}
-
-		public static InventorySlotCache InventorySlots => Instance.inventorySlotCache;
-
-		/// <summary>
-		///     Current Intent status
-		/// </summary>
-		public static Intent CurrentIntent { get; set; }
-
-		/// <summary>
-		///     What is DamageZoneSeclector currently set at
-		/// </summary>
-		public static BodyPartType DamageZone { get; set; }
-
-		/// <summary>
-		///     Is throw selected?
-		/// </summary>
-		public static bool IsThrow { get; set; }
-
-		/// <summary>
-		///     Is Oxygen On?
-		/// </summary>
-		public static bool IsOxygen { get; set; }
-
-		public static void ResetAllUI()
-		{
-			UI_ItemSlot[] slots = Instance.GetComponentsInChildren<UI_ItemSlot>(true);
-			foreach (UI_ItemSlot slot in slots)
+			if (!Instance)
 			{
-				slot.Reset();
+				return;
 			}
-			foreach (DamageMonitorListener listener in Instance.GetComponentsInChildren<DamageMonitorListener>())
-			{
-				listener.Reset();
-			}
-			Camera2DFollow.followControl.ZeroStars();
+			Instance.isInputFocus = value;
 		}
+	}
+	public bool isInputFocus;
 
-		/// <summary>
-		///     use this for client UI mangling attepts
-		/// </summary>
-		public static bool TryUpdateSlot(UISlotObject slotInfo)
+	///Global flag for when we are using the mouse to do something that shouldn't cause interaction with the game.
+	public static bool IsMouseInteractionDisabled
+	{
+		get
 		{
-			if (!CanPutItemToSlot(slotInfo))
-			{
-				return false;
-			}
-			InventoryInteractMessage.Send(slotInfo.Slot, slotInfo.SlotContents, true);
-			UpdateSlot(slotInfo);
-			return true;
+			return Instance && Instance.isMouseInteractionDisabled;
 		}
-
-		/// <summary>
-		///     rather direct method that doesn't check anything.
-		///     probably should check if you CanPutItemToSlot before using it
-		/// </summary>
-		public static void UpdateSlot(UISlotObject slotInfo)
+		set
 		{
-			//			Debug.LogFormat("Updating slots: {0}", slotInfo);
-			//			InputTrigger.Touch(slotInfo.SlotContents);
-			InventorySlots[slotInfo.Slot].SetItem(slotInfo.SlotContents);
-			ClearObjectIfNotInSlot(slotInfo);
-		}
-
-		public static bool CanPutItemToSlot(UISlotObject proposedSlotInfo)
-		{
-			if (proposedSlotInfo.IsEmpty() || !SendUpdateAllowed(proposedSlotInfo.SlotContents))
+			if (!Instance)
 			{
-				return false;
+				return;
 			}
-			UI_ItemSlot uiItemSlot = InventorySlots[proposedSlotInfo.Slot];
-			PlayerScript lps = PlayerManager.LocalPlayerScript;
-			if (!lps || lps.canNotInteract() ||
-			    uiItemSlot == null || uiItemSlot.IsFull ||
-			    !uiItemSlot.CheckItemFit(proposedSlotInfo.SlotContents))
-			{
-				return false;
-			}
-			return true;
+			Instance.isMouseInteractionDisabled = value;
 		}
+	}
 
-		public static string FindEmptySlotForItem(GameObject itemToPlace)
+	private bool isMouseInteractionDisabled;
+
+	public static UIManager Instance
+	{
+		get
 		{
-			foreach (UI_ItemSlot slot in Instance.inventorySlotCache)
+			if (!uiManager)
 			{
-				UISlotObject slottingAttempt = new UISlotObject(slot.eventName, itemToPlace);
-				if (CanPutItemToSlot(slottingAttempt))
-				{
-					return slot.eventName;
-				}
+				uiManager = FindObjectOfType<UIManager>();
 			}
 
-			return null;
+			return uiManager;
 		}
+	}
 
-		/// Checks if player received transform update after sending interact message
-		/// (Anti-blinking protection)
-		public static bool SendUpdateAllowed(GameObject item)
-		{
-			//			if ( CustomNetworkManager.Instance._isServer ) return true;
-			//			var netId = item.GetComponent<NetworkIdentity>().netId;
-			//			var lastReceive = item.GetComponent<NetworkTransform>().lastSyncTime;
-			//			var lastSend = InputTrigger.interactCache.ContainsKey(netId) ? InputTrigger.interactCache[netId] : 0f;
-			//			if ( lastReceive < lastSend )
-			//			{
-			//				return CanTrySendAgain(lastSend, lastReceive);
-			//			}
-			//			Debug.LogFormat("ItemAction allowed! {2} msgcache {0} {1}", InputTrigger.interactCache.Count, lastSend, item.name);
-			return true;
-		}
+#if UNITY_ANDROID || UNITY_IOS //|| UNITY_EDITOR
+	public static bool UseGamePad = true;
+#else
+	public static bool UseGamePad = false;
+#endif
 
-		private static bool CanTrySendAgain(float lastSend, float lastReceive)
-		{
-			float f = Time.time - lastSend;
-			float d = lastSend - lastReceive;
-			bool canTrySendAgain = f >= d || f >= 1.5;
-			Debug.LogFormat("canTrySendAgain = {0} {1}>={2} ", canTrySendAgain, f, d);
-			return canTrySendAgain;
-		}
+	//		public static ControlChat Chat => Instance.chatControl; //Use ChatRelay.Instance.AddToChatLog instead!
+	public static ProgressBar ProgressBar => Instance.progressBar;
+	public static PlayerHealthUI PlayerHealthUI => Instance.playerHealthUI;
+	public static AlertUI AlertUI => Instance.alertUI;
 
-		private static void ClearObjectIfNotInSlot(UISlotObject slotInfo)
+	public static Hands Hands => Instance.hands;
+
+	public static ControlIntent Intent => Instance.intentControl;
+
+	public static ControlAction Action => Instance.actionControl;
+
+	public static DragAndDrop DragAndDrop => Instance.dragAndDrop;
+
+	public static ControlWalkRun WalkRun => Instance.walkRunControl;
+
+	public static ControlDisplays Display => Instance.displayControl;
+
+	public static PlayerListUI PlayerListUI => Instance.playerListUIControl;
+
+	public static DisplayManager DisplayManager => Instance.displayManager;
+	public static UI_StorageHandler StorageHandler => Instance.storageHandler;
+	public static ZoneSelector ZoneSelector => Instance.zoneSelector;
+
+	public static string SetToolTip
+	{
+		set { Instance.toolTip.text = value; }
+	}
+
+	public static string SetPingDisplay
+	{
+		set { Instance.pingDisplay.text = value; }
+	}
+
+	public static InventorySlotCache InventorySlots => Instance.inventorySlotCache;
+
+	/// <summary>
+	///     Current Intent status
+	/// </summary>
+	public static Intent CurrentIntent
+	{
+		get => currentIntent;
+		set
 		{
-			for (int i = 0; i < InventorySlots.Length; i++)
+			currentIntent = value;
+			//update the intent of the player so it can be synced
+			if (PlayerManager.LocalPlayerScript != null)
 			{
-				if (InventorySlots[i].eventName.Equals(slotInfo.Slot) || !InventorySlots[i].Item)
-				{
-					continue;
-				}
-				if (InventorySlots[i].Item.Equals(slotInfo.SlotContents))
-				{
-					InventorySlots[i].Clear();
-				}
+				PlayerManager.LocalPlayerScript.playerMove.IsHelpIntent = value == global::Intent.Help;
 			}
 		}
+	}
 
-		public static void SetDeathVisibility(bool vis)
+	private static Intent currentIntent;
+
+	/// <summary>
+	///     What is DamageZoneSeclector currently set at
+	/// </summary>
+	public static BodyPartType DamageZone { get; set; }
+
+	/// <summary>
+	///     Is throw selected?
+	/// </summary>
+	public static bool IsThrow { get; set; }
+
+	/// <summary>
+	///     Is Oxygen On?
+	/// </summary>
+	public static bool IsOxygen { get; set; }
+
+	private void Start()
+	{
+		Logger.Log("Touchscreen support = " + CommonInput.IsTouchscreen, Category.UI);
+
+		if (!PlayerPrefs.HasKey(PlayerPrefKeys.TTSToggleKey))
 		{
-//			Debug.Log("I was activated!");
-			foreach (Transform child in Display.hudRight.GetComponentsInChildren<Transform>(true))
-			{
-				if (child.gameObject.name != "OxygenSelector" && child.gameObject.name != "PlayerHealth_UI_Hud")
-				{
-					child.gameObject.SetActive(vis);
-				}
-			}
-
-			foreach (Transform child in Display.hudBottom.GetComponentsInChildren<Transform>(true))
-			{
-				Transform eh = Display.hudBottom.transform.Find("Equip-Hands");
-				if (child.gameObject.name != "Panel_Hud_Bottom" && !child.transform.IsChildOf(eh) && child.gameObject.name != "Equip-Hands")
-				{
-					child.gameObject.SetActive(vis);
-				}
-			}
+			PlayerPrefs.SetInt(PlayerPrefKeys.TTSToggleKey, 0);
+			ttsToggle = false;
+			PlayerPrefs.Save();
 		}
+		else
+		{
+			ttsToggle = PlayerPrefs.GetInt(PlayerPrefKeys.TTSToggleKey) == 1;
+		}
+	}
+
+	public static void ToggleTTS(bool activeState)
+	{
+		Instance.ttsToggle = activeState;
+		PlayerPrefs.SetInt(PlayerPrefKeys.TTSToggleKey, activeState ? 1 : 0);
+		PlayerPrefs.Save();
+	}
+
+	public static void ResetAllUI()
+	{
+		UI_ItemSlot[] slots = Instance.GetComponentsInChildren<UI_ItemSlot>(true);
+		foreach (UI_ItemSlot slot in slots)
+		{
+			slot.Reset();
+		}
+		foreach (DamageMonitorListener listener in Instance.GetComponentsInChildren<DamageMonitorListener>())
+		{
+			listener.Reset();
+		}
+		Camera2DFollow.followControl.ZeroStars();
+		IsOxygen = false;
+		GamePad.gameObject.SetActive(UseGamePad);
+	}
+
+	public static void CheckStorageHandlerOnMove(GameObject item)
+	{
+		if (item == null)
+		{
+			return;
+		}
+		var storageObj = item.GetComponent<StorageObject>();
+		if (storageObj == null)
+		{
+			return;
+		}
+		if (storageObj == StorageHandler.storageCache)
+		{
+			StorageHandler.CloseStorageUI();
+		}
+	}
+
+	public static bool CanPutItemToSlot(InventorySlot inventorySlot, GameObject item, PlayerScript playerScript)
+	{
+		if (item == null || inventorySlot.Item != null)
+		{
+			return false;
+		}
+		if (playerScript.canNotInteract())
+		{
+			return false;
+		}
+		var uiItemSlot = InventorySlotCache.GetSlotByEvent(inventorySlot.equipSlot);
+		if (!uiItemSlot.CheckItemFit(item))
+		{
+			return false;
+		}
+		return true;
 	}
 }

@@ -1,33 +1,68 @@
 ﻿using UnityEngine;
 using UnityEngine.UI;
+using UnityEngine.EventSystems;
 
-namespace UI
+public class OxygenButton : TooltipMonoBehaviour
 {
-	public class OxygenButton : MonoBehaviour
+	private Image image;
+	public Sprite[] stateSprites;
+	public bool IsInternalsEnabled;
+	public override string Tooltip => "toggle internals";
+
+	void Awake()
 	{
-		private Image image;
-		public Sprite[] stateSprites;
+		image = GetComponent<Image>();
+		IsInternalsEnabled = false;
+	}
 
-		// Use this for initialization
-		private void Start()
+	void OnEnable()
+	{
+		EventManager.AddHandler(EVENT.EnableInternals, OnEnableInternals);
+		EventManager.AddHandler(EVENT.DisableInternals, OnDisableInternals);
+	}
+
+	void OnDisable()
+	{
+		EventManager.RemoveHandler(EVENT.EnableInternals, OnEnableInternals);
+		EventManager.RemoveHandler(EVENT.DisableInternals, OnDisableInternals);
+	}
+
+	/// <summary>
+	/// toggle the button state and play any sounds
+	/// </summary>
+	public void OxygenSelect()
+	{
+		if (PlayerManager.LocalPlayer == null)
 		{
-			image = GetComponent<Image>();
-			UIManager.IsOxygen = false;
+			return;
 		}
 
-		public void OxygenSelect()
+		if (PlayerManager.LocalPlayerScript.playerHealth.IsCrit)
 		{
-			SoundManager.Play("Click01");
-			if (!UIManager.IsOxygen)
-			{
-				UIManager.IsOxygen = true;
-				image.sprite = stateSprites[1];
-			}
-			else
-			{
-				UIManager.IsOxygen = false;
-				image.sprite = stateSprites[0];
-			}
+			return;
 		}
+
+		SoundManager.Play("Click01");
+
+		if (IsInternalsEnabled)
+		{
+			EventManager.Broadcast(EVENT.DisableInternals);
+		}
+		else
+		{
+			EventManager.Broadcast(EVENT.EnableInternals);
+		}
+	}
+
+	public void OnEnableInternals()
+	{
+		image.sprite = stateSprites[1];
+		IsInternalsEnabled = true;
+	}
+
+	public void OnDisableInternals()
+	{
+		image.sprite = stateSprites[0];
+		IsInternalsEnabled = false;
 	}
 }

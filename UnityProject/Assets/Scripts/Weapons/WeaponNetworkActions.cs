@@ -1,20 +1,19 @@
 ﻿using System.Collections;
-using PlayGroup;
 using UnityEngine;
 using UnityEngine.Networking;
-using Weapons;
 
 public class WeaponNetworkActions : ManagedNetworkBehaviour
 {
 	private readonly float speed = 7f;
 	private bool allowAttack = true;
+	float fistDamage = 5;
 
 	//muzzle flash
 	private bool isFlashing;
 
 	private bool isForLerpBack;
 	private Vector3 lerpFrom;
-	private bool lerping;
+	public bool lerping { get; private set; } //needs to be read by Camera2DFollow
 
 	private float lerpProgress;
 
@@ -22,10 +21,9 @@ public class WeaponNetworkActions : ManagedNetworkBehaviour
 	private Sprite lerpSprite;
 
 	private Vector3 lerpTo;
-	public GameObject muzzleFlash;
 	private PlayerMove playerMove;
 	private PlayerScript playerScript;
-	private SoundNetworkActions soundNetworkActions;
+	private RegisterPlayer registerPlayer;
 	private GameObject spritesObj;
 
 	private GameObject casingPrefab;
@@ -34,7 +32,7 @@ public class WeaponNetworkActions : ManagedNetworkBehaviour
 	{
 		spritesObj = transform.Find("Sprites").gameObject;
 		playerMove = GetComponent<PlayerMove>();
-		soundNetworkActions = GetComponent<SoundNetworkActions>();
+		registerPlayer = GetComponent<RegisterPlayer>();
 		playerScript = GetComponent<PlayerScript>();
 		lerpSprite = null;
 
@@ -42,180 +40,217 @@ public class WeaponNetworkActions : ManagedNetworkBehaviour
 	}
 
 	[Command]
-	public void CmdLoadMagazine(GameObject weapon, GameObject magazine, string hand)
+	public void CmdLoadMagazine(GameObject gunObject, GameObject magazine, string hand)
 	{
-		Weapon w = weapon.GetComponent<Weapon>();
+		Gun gun = gunObject.GetComponent<Gun>();
 		NetworkInstanceId networkID = magazine.GetComponent<NetworkIdentity>().netId;
-		w.MagNetID = networkID;
-		GetComponent<PlayerNetworkActions>().ClearInventorySlot(hand);
+		gun.ServerHandleReloadRequest(networkID);
+		//var slot = InventoryManager.GetSlotFromOriginatorHand(interaction.Performer, interaction.HandSlot.equipSlot);
+		//InventoryManager.ClearInvSlot(slot);
 	}
 
 	[Command]
-	public void CmdUnloadWeapon(GameObject weapon)
+	public void CmdUnloadWeapon(GameObject gunObject)
 	{
-		Weapon w = weapon.GetComponent<Weapon>();
-		NetworkInstanceId networkID = NetworkInstanceId.Invalid;
-		w.MagNetID = networkID;
+		Gun gun = gunObject.GetComponent<Gun>();
+
+		var cnt = gun.CurrentMagazine?.GetComponent<CustomNetTransform>();
+		if(cnt != null)
+		{
+			cnt.InertiaDrop(transform.position, playerScript.PlayerSync.SpeedServer, playerScript.PlayerSync.ServerState.Impulse);
+		} else {
+			Logger.Log("Magazine not found for unload weapon", Category.Firearms);
+		}
+
+		gun.ServerHandleUnloadRequest();
+	}
+
+	/// <summary>
+	/// Utility function that gets the weapon for you
+	/// </summary>
+	[Command]
+	public void CmdRequestMeleeAttackSlot(GameObject victim, EquipSlot slot, Vector2 stabDirection,
+	BodyPartType damageZone, LayerType layerType)
+	{
+		var weapon = playerScript.playerNetworkActions.Inventory[slot].Item;
+		CmdRequestMeleeAttack(victim, weapon, stabDirection, damageZone, layerType);
 	}
 
 	[Command]
-	public void CmdShootBullet(GameObject weapon, GameObject magazine, Vector2 direction, string bulletName,
-		BodyPartType damageZone, bool isSuicideShot)
+	public void CmdRequestMeleeAttack(GameObject victim, GameObject weapon, Vector2 stabDirection,
+		BodyPartType damageZone, LayerType layerType)
 	{
-		if (!playerMove.allowInput || playerMove.isGhost)
+		if (!playerMove.allowInput ||
+		    playerScript.IsGhost ||
+		    !victim ||
+		    !playerScript.playerHealth.serverPlayerConscious
+		)
 		{
 			return;
 		}
 
-		//get componants
-		Weapon wepBehavior = weapon.GetComponent<Weapon>();
-		MagazineBehaviour magBehaviour = magazine.GetComponent<MagazineBehaviour>();
-
-		//reduce ammo for shooting
-		magBehaviour.ammoRemains--; //TODO: remove more bullets if burst
-
-		//get the bullet prefab being shot
-		GameObject bullet = PoolManager.Instance.PoolClientInstantiate(Resources.Load(bulletName) as GameObject,
-			transform.position, Quaternion.identity);
-		float angle = Mathf.Atan2(direction.y, direction.x) * Mathf.Rad2Deg;
-
-		//if we have recoil variance add it, and get the new attack angle
-		if (wepBehavior != null && wepBehavior.CurrentRecoilVariance > 0)
-		{
-			direction = GetRecoilOffset(wepBehavior, angle);
-		}
-
-		BulletBehaviour b = bullet.GetComponent<BulletBehaviour>();
-		b.isSuicide = isSuicideShot;
-		b.Shoot(direction, angle, gameObject, damageZone);
-
-		//add additional recoil after shooting for the next round
-		AppendRecoil(wepBehavior, angle);
-
-		//This is used to determine where bullet shot should head towards on client
-		Ray2D ray = new Ray2D(transform.position, direction);
-		RpcShootBullet(weapon, ray.GetPoint(30f), bulletName, damageZone);
-
-		if (wepBehavior.SpawnsCaseing)
-		{
-			ItemFactory.SpawnItem(casingPrefab, transform.position, transform.parent);
-		}
-
-        if (!isFlashing)
-		{
-			isFlashing = true;
-			StartCoroutine(ShowMuzzleFlash());
-		}
-	}
-
-	//Bullets are just graphical candy on the client, give them the end point and let 
-	//them work out the start pos and direction
-	[ClientRpc]
-	private void RpcShootBullet(GameObject weapon, Vector2 endPos, string bulletName, BodyPartType damageZone)
-	{
-		if (!playerMove.allowInput || playerMove.isGhost)
+		if (!allowAttack)
 		{
 			return;
 		}
 
-		Weapon wepBehavior = weapon.GetComponent<Weapon>();
-		if (wepBehavior != null)
-		{
-			SoundManager.PlayAtPosition(wepBehavior.FireingSound, transform.position);
-		}
-
-		if (CustomNetworkManager.Instance._isServer)
-		{
-			return;
-		}
-
-		GameObject bullet = PoolManager.Instance.PoolClientInstantiate(Resources.Load(bulletName) as GameObject,
-			transform.position, Quaternion.identity);
-		Vector2 playerPos = new Vector2(transform.position.x, transform.position.y);
-		Vector2 dir = (endPos - playerPos).normalized;
-		float angle = Mathf.Atan2(dir.y, dir.x) * Mathf.Rad2Deg;
-		BulletBehaviour b = bullet.GetComponent<BulletBehaviour>();
-		b.Shoot(dir, angle, gameObject, damageZone);
-		if (!isFlashing)
-		{
-			isFlashing = true;
-			StartCoroutine(ShowMuzzleFlash());
-		}
-	}
-
-	[Command] 
-	public void CmdRequestMeleeAttack(GameObject victim, string slot, Vector2 stabDirection, BodyPartType damageZone)
-	{
-		if (!playerMove.allowInput 
-		    || playerMove.isGhost
-		    || !victim
-		    || !playerScript.playerNetworkActions.SlotNotEmpty( slot ) 
-		    || !PlayerManager.PlayerInReach( victim.transform )
-		    ) {
-			return;
-		}
-		var weapon = playerScript.playerNetworkActions.Inventory[slot];
 		ItemAttributes weaponAttr = weapon.GetComponent<ItemAttributes>();
-		HealthBehaviour victimHealth = victim.GetComponent<HealthBehaviour>();
 
-
-		// checks object and component existence before defining healthBehaviour variable.
-		if (victimHealth.IsDead == false)
+		// If Tilemap LayerType is not None then it is a tilemap being attacked
+		if (layerType != LayerType.None)
 		{
-			if (!allowAttack)
+			TileChangeManager tileChangeManager = victim.GetComponent<TileChangeManager>();
+			MetaTileMap metaTileMap = victim.GetComponentInChildren<MetaTileMap>();
+			if (tileChangeManager == null)
 			{
 				return;
 			}
 
-			if (victim != gameObject)
+			//Tilemap stuff:
+			var tileMapDamage = metaTileMap.Layers[layerType].GetComponent<TilemapDamage>();
+			if (tileMapDamage != null)
 			{
+				//Wire cutters should snip the grills instead:
+				if (weaponAttr.itemName == "wirecutters" &&
+					tileMapDamage.Layer.LayerType == LayerType.Grills)
+				{
+					tileMapDamage.WireCutGrill((Vector2) transform.position + stabDirection);
+					StartCoroutine(AttackCoolDown());
+					return;
+				}
+
+				tileMapDamage.DoMeleeDamage((Vector2) transform.position + stabDirection,
+					gameObject, (int) weaponAttr.hitDamage);
+
+				playerMove.allowInput = false;
 				RpcMeleeAttackLerp(stabDirection, weapon);
-			}
-
-			victimHealth.ApplyDamage(gameObject, ( int ) weaponAttr.hitDamage, DamageType.BRUTE, damageZone);
-			if ( weaponAttr.hitDamage > 0 ) {
-				PostToChatMessage.SendItemAttackMessage( weapon, gameObject, victim, (int)weaponAttr.hitDamage, damageZone );
-			}
-
-			soundNetworkActions.RpcPlayNetworkSound(weaponAttr.hitSound, transform.position);
-			StartCoroutine(AttackCoolDown());
-
-		}
-		else
-		{
-			//Butchering if we can
-			if ( weaponAttr.type != ItemType.Knife ) {
+				StartCoroutine(AttackCoolDown());
 				return;
 			}
+			return;
+		}
+
+		//This check cannot be used with TilemapDamage as the transform position is always far away
+		if (!playerScript.IsInReach(victim, true))
+		{
+			return;
+		}
+
+		// Consider moving this into a MeleeItemTrigger for knifes
+		//Meaty bodies:
+		LivingHealthBehaviour victimHealth = victim.GetComponent<LivingHealthBehaviour>();
+		if (victimHealth != null && victimHealth.IsDead && weaponAttr.itemType == ItemType.Knife)
+		{
 			if (victim.GetComponent<SimpleAnimal>())
 			{
 				SimpleAnimal attackTarget = victim.GetComponent<SimpleAnimal>();
 				RpcMeleeAttackLerp(stabDirection, weapon);
+				playerMove.allowInput = false;
 				attackTarget.Harvest();
-				soundNetworkActions.RpcPlayNetworkSound("BladeSlice", transform.position);
+				SoundManager.PlayNetworkedAtPos( "BladeSlice", transform.position );
 			}
 			else
 			{
 				PlayerHealth attackTarget = victim.GetComponent<PlayerHealth>();
 				RpcMeleeAttackLerp(stabDirection, weapon);
+				playerMove.allowInput = false;
 				attackTarget.Harvest();
-				soundNetworkActions.RpcPlayNetworkSound("BladeSlice", transform.position);
+				SoundManager.PlayNetworkedAtPos( "BladeSlice", transform.position );
 			}
+		}
+
+		if (victim != gameObject)
+		{
+			RpcMeleeAttackLerp(stabDirection, weapon);
+			playerMove.allowInput = false;
+		}
+
+		var integrity = victim.GetComponent<Integrity>();
+		if (integrity != null)
+		{
+			//damaging an object
+			integrity.ApplyDamage((int)weaponAttr.hitDamage, AttackType.Melee, weaponAttr.damageType);
+		}
+		else
+		{
+			//damaging a living thing
+			victimHealth.ApplyDamage(gameObject, (int) weaponAttr.hitDamage, AttackType.Melee, weaponAttr.damageType, damageZone);
+		}
+
+		SoundManager.PlayNetworkedAtPos(weaponAttr.hitSound, transform.position);
+
+
+		if (weaponAttr.hitDamage > 0)
+		{
+			PostToChatMessage.SendAttackMessage(gameObject, victim, (int) weaponAttr.hitDamage, damageZone, weapon);
+		}
+
+
+		StartCoroutine(AttackCoolDown());
+	}
+
+	/// <summary>
+	/// Performs a punch attempt from one player to a target.
+	/// </summary>
+	/// <param name="punchDirection">The direction of the punch towards the victim.</param>
+	/// <param name="damageZone">The part of the body that is being punched.</param>
+	[Command]
+	public void CmdRequestPunchAttack(GameObject victim, Vector2 punchDirection, BodyPartType damageZone)
+	{
+		var victimHealth = victim.GetComponent<LivingHealthBehaviour>();
+		var victimRegisterTile = victim.GetComponent<RegisterTile>();
+		var rng = new System.Random();
+
+		if (!playerScript.IsInReach(victim, true) || !victimHealth)
+		{
+			return;
+		}
+
+		// If the punch is not self inflicted, do the simple lerp attack animation.
+		if (victim != gameObject)
+		{
+			RpcMeleeAttackLerp(punchDirection, null);
+			playerMove.allowInput = false;
+		}
+
+		// This is based off the alien/humanoid/attack_hand punch code of TGStation's codebase.
+		// Punches have 90% chance to hit, otherwise it is a miss.
+		if (90 >= rng.Next(1, 100))
+		{
+			// The punch hit.
+			victimHealth.ApplyDamage(gameObject, (int) fistDamage, AttackType.Melee, DamageType.Brute, damageZone);
+			if (fistDamage > 0)
+			{
+				PostToChatMessage.SendAttackMessage(gameObject, victim, (int) fistDamage, damageZone);
+			}
+
+			// Make a random punch hit sound.
+			SoundManager.PlayNetworkedAtPos("Punch#", victimRegisterTile.WorldPosition);
+
+			StartCoroutine(AttackCoolDown());
+		}
+		else
+		{
+			// The punch missed.
+			string victimName = victim.Player()?.Name;
+			SoundManager.PlayNetworkedAtPos("PunchMiss", transform.position);
+			ChatRelay.Instance.AddToChatLogServer(new ChatEvent
+			{
+				channels = ChatChannel.Local,
+				message = $"{gameObject.Player()?.Name} has attempted to punch {victimName}!"
+			});
 		}
 	}
 
 	private IEnumerator AttackCoolDown(float seconds = 0.5f)
 	{
 		allowAttack = false;
-		yield return new WaitForSeconds(seconds);
+		yield return WaitFor.Seconds(seconds);
 		allowAttack = true;
 	}
 
-	// Harvest should only be used for animals like pete and cows
-
-
 	[ClientRpc]
-	private void RpcMeleeAttackLerp(Vector2 stabDir, GameObject weapon)
+	public void RpcMeleeAttackLerp(Vector2 stabDir, GameObject weapon)
 	{
 		if (lerping)
 		{
@@ -231,18 +266,32 @@ public class WeaponNetworkActions : ManagedNetworkBehaviour
 		if (lerpSprite != null)
 		{
 			playerScript.hitIcon.ShowHitIcon(stabDir, lerpSprite);
-			if (PlayerManager.LocalPlayer && PlayerManager.LocalPlayer.gameObject.name == gameObject.name)
-			{
-				PlayerManager.LocalPlayerScript.playerMove.allowInput = true;
-			}
 		}
-		lerpFrom = transform.position;
-		Vector3 newDir = stabDir * 0.5f;
-		newDir.z = lerpFrom.z;
-		lerpTo = lerpFrom + newDir;
+
+		Vector3 lerpFromWorld = spritesObj.transform.position;
+		Vector3 lerpToWorld = lerpFromWorld + (Vector3)(stabDir * 0.5f);
+		Vector3 lerpFromLocal = spritesObj.transform.parent.InverseTransformPoint(lerpFromWorld);
+		Vector3 lerpToLocal = spritesObj.transform.parent.InverseTransformPoint(lerpToWorld);
+		Vector3 localStabDir = lerpToLocal - lerpFromLocal;
+
+		lerpFrom = lerpFromLocal;
+		lerpTo = lerpToLocal;
 		lerpProgress = 0f;
 		isForLerpBack = true;
 		lerping = true;
+	}
+
+	[Command]
+	private void CmdRequestInputActivation()
+	{
+		if (playerScript.playerHealth.serverPlayerConscious)
+		{
+			playerMove.allowInput = true;
+		}
+		else
+		{
+			playerMove.allowInput = false;
+		}
 	}
 
 	//Server lerps
@@ -251,24 +300,27 @@ public class WeaponNetworkActions : ManagedNetworkBehaviour
 		if (lerping)
 		{
 			lerpProgress += Time.deltaTime;
-			spritesObj.transform.position = Vector3.Lerp(lerpFrom, lerpTo, lerpProgress * speed);
-			if (spritesObj.transform.position == lerpTo || lerpProgress > 2f)
+			spritesObj.transform.localPosition = Vector3.Lerp(lerpFrom, lerpTo, lerpProgress * speed);
+			if (spritesObj.transform.localPosition == lerpTo || lerpProgress > 2f)
 			{
 				if (!isForLerpBack)
 				{
 					ResetLerp();
 					spritesObj.transform.localPosition = Vector3.zero;
-						if (PlayerManager.LocalPlayer && PlayerManager.LocalPlayer.gameObject.name == gameObject.name)
+					if (PlayerManager.LocalPlayer)
+					{
+						if (PlayerManager.LocalPlayer == gameObject)
 						{
-							PlayerManager.LocalPlayerScript.playerMove.allowInput = true;
+							CmdRequestInputActivation(); //Ask server if you can move again after melee attack
 						}
+					}
 				}
 				else
 				{
 					//To lerp back from knife attack
 					ResetLerp();
 					lerpTo = lerpFrom;
-					lerpFrom = spritesObj.transform.position;
+					lerpFrom = spritesObj.transform.localPosition;
 					lerping = true;
 				}
 			}
@@ -282,39 +334,4 @@ public class WeaponNetworkActions : ManagedNetworkBehaviour
 		isForLerpBack = false;
 		lerpSprite = null;
 	}
-
-	private IEnumerator ShowMuzzleFlash()
-	{
-		muzzleFlash.gameObject.SetActive(true);
-		yield return new WaitForSeconds(0.1f);
-		muzzleFlash.gameObject.SetActive(false);
-		isFlashing = false;
-	}
-
-	#region Weapon Network Supporting Methods
-
-	private static Vector2 GetRecoilOffset(Weapon weapon, float angle)
-	{
-		float angleVariance = Random.Range(-weapon.CurrentRecoilVariance, weapon.CurrentRecoilVariance);
-		float newAngle = angle * Mathf.Deg2Rad + angleVariance;
-		Vector2 vec2 = new Vector2(Mathf.Cos(newAngle), Mathf.Sin(newAngle)).normalized;
-		return vec2;
-	}
-
-	private static void AppendRecoil(Weapon weapon, float angle)
-	{
-		if (weapon != null && weapon.CurrentRecoilVariance < weapon.MaxRecoilVariance)
-		{
-			//get a random recoil
-			float randRecoil = Random.Range(weapon.CurrentRecoilVariance, weapon.MaxRecoilVariance);
-			weapon.CurrentRecoilVariance += randRecoil;
-			//make sure the recoil is not too high
-			if (weapon.CurrentRecoilVariance > weapon.MaxRecoilVariance)
-			{
-				weapon.CurrentRecoilVariance = weapon.MaxRecoilVariance;
-			}
-		}
-	}
-
-	#endregion
 }

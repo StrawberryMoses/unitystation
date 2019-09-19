@@ -1,19 +1,18 @@
-﻿using Sprites;
-using UnityEngine;
+﻿using UnityEngine;
 using UnityEngine.Networking;
 
 public class EffectsFactory : NetworkBehaviour
 {
 	public static EffectsFactory Instance;
 
-	//Parents to make tidy
-	private GameObject shroudParent;
-
 	private GameObject fireTile { get; set; }
-	private GameObject scorchMarksTile { get; set; }
-	private GameObject shroudTile { get; set; }
 
-	private GameObject bloodTile { get; set; }
+	private GameObject smallBloodTile;
+	private GameObject mediumBloodTile;
+	private GameObject largeBloodTile;
+	private GameObject largeAshTile;
+	private GameObject smallAshTile;
+	private GameObject waterTile { get; set; }
 
 	private void Awake()
 	{
@@ -31,21 +30,19 @@ public class EffectsFactory : NetworkBehaviour
 	{
 		//Do init stuff
 		fireTile = Resources.Load("FireTile") as GameObject;
-		scorchMarksTile = Resources.Load("ScorchMarks") as GameObject;
-		shroudTile = Resources.Load("ShroudTile") as GameObject;
-		bloodTile = Resources.Load("BloodSplat") as GameObject;
-		//Parents
-		shroudParent = new GameObject();
-		shroudParent.transform.position += new Vector3(0.5f, 0.5f, 0);
-		shroudParent.name = "FieldOfView(Shrouds)";
-		shroudParent.tag = "FogOfWar";
+		smallBloodTile = Resources.Load("SmallBloodSplat") as GameObject;
+		mediumBloodTile = Resources.Load("MediumBloodSplat") as GameObject;
+		largeBloodTile = Resources.Load("LargeBloodSplat") as GameObject;
+		largeAshTile = Resources.Load("LargeAsh") as GameObject;
+		smallAshTile = Resources.Load("SmallAsh") as GameObject;
+		waterTile = Resources.Load("WaterSplat") as GameObject;
 	}
 
 	//FileTiles are client side effects only, no need for network sync (triggered by same event on all clients/server)
-	public void SpawnFileTileLocal(float fuelAmt, Vector3 localPosition, Transform parent)
+	public void SpawnFireTileClient(float fuelAmt, Vector3 localPosition, Transform parent)
 	{
 		//ClientSide pool spawn
-		GameObject fireObj = PoolManager.Instance.PoolClientInstantiate(fireTile, Vector3.zero, Quaternion.identity);
+		GameObject fireObj = PoolManager.PoolClientInstantiate(fireTile, Vector3.zero);
 		//Spawn tiles need to be placed in a local matrix:
 		fireObj.transform.parent = parent;
 		fireObj.transform.localPosition = localPosition;
@@ -53,43 +50,45 @@ public class EffectsFactory : NetworkBehaviour
 		fT.StartFire(fuelAmt);
 	}
 
-	public GameObject SpawnScorchMarks(Transform parent)
-	{
-		//ClientSide spawn
-		GameObject sM =
-			PoolManager.Instance.PoolClientInstantiate(scorchMarksTile, parent.position, Quaternion.identity);
-		sM.transform.parent = parent;
-		return sM;
-	}
-
-	public GameObject SpawnShroudTile(Vector3 pos)
-	{
-		GameObject sT = PoolManager.Instance.PoolClientInstantiate(shroudTile, pos, Quaternion.identity);
-		sT.transform.parent = shroudParent.transform;
-		return sT;
-	}
-
 	[Server]
-	public void BloodSplat(Vector3 pos, BloodSplatSize splatSize)
+	public void BloodSplat(Vector3 worldPos, BloodSplatSize splatSize)
 	{
-		GameObject b = PoolManager.Instance.PoolNetworkInstantiate(bloodTile, pos, Quaternion.identity, 
-			MatrixManager.AtPoint( Vector3Int.RoundToInt( pos ) ).GameObject.transform);
-		BloodSplat bSplat = b.GetComponent<BloodSplat>();
-		//choose a random blood sprite
-		int spriteNum = 0;
+		GameObject chosenTile = null;
 		switch (splatSize)
 		{
 			case BloodSplatSize.small:
-				spriteNum = Random.Range(137, 139);
+				chosenTile = smallBloodTile;
 				break;
 			case BloodSplatSize.medium:
-				spriteNum = Random.Range(116, 120);
+				chosenTile = mediumBloodTile;
 				break;
 			case BloodSplatSize.large:
-				spriteNum = Random.Range(51, 56);
+				chosenTile = largeBloodTile;
 				break;
 		}
 
-		bSplat.bloodSprite = spriteNum;
+		if (chosenTile != null)
+		{
+			PoolManager.PoolNetworkInstantiate(chosenTile, worldPos,
+				MatrixManager.AtPoint(Vector3Int.RoundToInt(worldPos), true).Objects);
+		}
+	}
+
+	/// <summary>
+	/// Creates ash at the specified tile position
+	/// </summary>
+	/// <param name="worldTilePos"></param>
+	/// <param name="large">if true, spawns the large ash pile, otherwise spawns the small one</param>
+	public void Ash(Vector2Int worldTilePos, bool large)
+	{
+		PoolManager.PoolNetworkInstantiate(large ? largeAshTile : smallAshTile, worldTilePos.To3Int(),
+			MatrixManager.AtPoint(worldTilePos.To3Int(), true).Objects);
+	}
+
+	[Server]
+	public void WaterSplat(Vector3 worldPos)
+	{
+		PoolManager.PoolNetworkInstantiate(waterTile, worldPos,
+			MatrixManager.AtPoint(Vector3Int.RoundToInt(worldPos), true).Objects, Quaternion.identity);
 	}
 }

@@ -1,6 +1,4 @@
-﻿using PlayGroup;
-using Tilemaps.Tiles;
-using UnityEngine;
+﻿using UnityEngine;
 using UnityEngine.UI;
 
 public class UITileListItem : MonoBehaviour
@@ -58,11 +56,5 @@ public class UITileListItem : MonoBehaviour
 		{
 			return;
 		}
-		//Interact with item. In case we picked up the item, it should no longer be on the list
-		if (PlayerManager.LocalPlayerScript.inputController.Interact(item.transform))
-		{
-			UITileList.RemoveTileListItem(transform.gameObject);
-		}
-		;
 	}
 }

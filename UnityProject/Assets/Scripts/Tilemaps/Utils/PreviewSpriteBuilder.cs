@@ -3,12 +3,10 @@ using System.Collections.Generic;
 using System.IO;
 using System.Linq;
 using System.Text.RegularExpressions;
-using Tilemaps.Tiles;
 using UnityEditor;
 using UnityEngine;
 
-namespace Tilemaps.Utils
-{
+
 	public static class PreviewSpriteBuilder
 	{
 		private const string previewPath = "Assets/Textures/TilePreviews";
@@ -79,6 +77,7 @@ namespace Tilemaps.Utils
 			Color[] colors = new Color[(int) (sprites[0].rect.width * sprites[0].rect.height)];
 			foreach (Sprite s in sprites)
 			{
+				if (s == null) continue;
 				Rect rect = s.rect;
 				Color[] pixels = s.texture.GetPixels((int) rect.x, (int) rect.y, (int) rect.width, (int) rect.height);
 
@@ -106,7 +105,7 @@ namespace Tilemaps.Utils
 		private static Sprite SaveSpriteToEditorPath(IReadOnlyList<Sprite> sprites, Object obj)
 		{
 			Sprite sprite = MergeSprites(sprites);
-			
+
 			string path = GetSpritePath(obj);
 
 			string dir = Path.GetDirectoryName(path);
@@ -158,5 +157,5 @@ namespace Tilemaps.Utils
 			return assetPath;
 		}
 	}
-}
+
 #endif

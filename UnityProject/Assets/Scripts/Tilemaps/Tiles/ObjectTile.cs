@@ -1,54 +1,65 @@
-﻿using System;
-using Tilemaps.Behaviours.Objects;
-using Tilemaps.Utils;
+using System;
 using UnityEngine;
 using UnityEngine.Tilemaps;
 #if UNITY_EDITOR
 using UnityEditor;
 #endif
 
-namespace Tilemaps.Tiles
-{
+
 	[Serializable]
 	public class ObjectTile : LayerTile
 	{
-		private GameObject _objectCurrent;
+		private GameObject objectCurrent;
 		public bool IsItem;
 		public bool KeepOrientation;
 		public GameObject Object;
 		public bool Offset;
 		public bool Rotatable;
 
+		[Header("Wire Stuff:")]
+		public bool IsWire;
+		public Connection WireEndA;
+		public Connection WireEndB;
+		public WiringColor CableType;
+		public Sprite wireSprite;
+
 #if UNITY_EDITOR
 		private void OnValidate()
 		{
 			if (Object != null)
 			{
-				if (_objectCurrent == null)
+				if (objectCurrent == null)
 				{
 					// if sprite already exists (e.g. at startup), then load it, otherwise create a new one
 					EditorApplication.delayCall += () =>
 					{
+						if(IsWire && wireSprite != null)
+						{
+							PreviewSprite = wireSprite;
+						}
+						else
+						{
 						PreviewSprite = PreviewSpriteBuilder.LoadSprite(Object) ??
 						                PreviewSpriteBuilder.Create(Object);
+						}
 					};
 				}
-				else if (Object != _objectCurrent)
+				else if (Object != objectCurrent)
 				{
 					// from one object -> other (overwrite current sprite)
 					EditorApplication.delayCall += () => { PreviewSprite = PreviewSpriteBuilder.Create(Object); };
 				}
 			}
-			else if (_objectCurrent != null)
+			else if (objectCurrent != null)
 			{
 				// setting to None object (delete current sprite)
-				GameObject obj = _objectCurrent;
+				GameObject obj = objectCurrent;
 				EditorApplication.delayCall += () => { PreviewSpriteBuilder.DeleteSprite(obj); };
 			}
 
-			_objectCurrent = Object;
+			objectCurrent = Object;
 
-			if (_objectCurrent != null && _objectCurrent.GetComponentInChildren<RegisterItem>() != null)
+			if (objectCurrent != null && objectCurrent.GetComponentInChildren<RegisterItem>() != null)
 			{
 				IsItem = true;
 			}
@@ -84,11 +95,26 @@ namespace Tilemaps.Tiles
 			go.name = Object.name;
 
 			go.SetActive(true);
+
+			if(IsWire){
+				SetWireSettings(go);
+			}
+		}
+
+		void SetWireSettings(GameObject spawnedObj)
+		{
+		var wireScript = spawnedObj.GetComponent<ElectricalOIinheritance>();
+		//Logger.Log (WireStartEnd.x.ToString() + " <x and y> " + WireStartEnd.x.ToString());
+		wireScript.SetConnPoints(WireEndA, WireEndB);
+		var SpriteScript = spawnedObj.GetComponent<CableInheritance>();
+		//Logger.Log(SpriteScript.ToString() + "oh yeah?");
+		SpriteScript.SetDirection (WireEndA, WireEndB,CableType);
+
 		}
 
 		public override Matrix4x4 Rotate(Matrix4x4 transformMatrix, bool anticlockwise = true, int count = 1)
 		{
-			if (Rotatable)
+			if (Rotatable && !IsWire)
 			{
 				for (int i = 0; i < count; i++)
 				{
@@ -114,4 +140,3 @@ namespace Tilemaps.Tiles
 			return Matrix4x4.TRS(newTranslation, newRotation, Vector3.one);
 		}
 	}
-}

@@ -1,6 +1,4 @@
-﻿using PlayGroup;
-using UI;
-using UnityEngine;
+﻿using UnityEngine;
 using UnityEngine.UI;
 
 public class GUI_PlayerJobs : MonoBehaviour
@@ -26,7 +24,7 @@ public class GUI_PlayerJobs : MonoBehaviour
 	public void BtnOk(JobType preference)
 	{
 		SoundManager.Play("Click01");
-		PlayerManager.LocalPlayerScript.playerNetworkActions.CmdRequestJob(preference);
+		PlayerManager.LocalViewerScript.CmdRequestJob(preference, PlayerManager.CurrentCharacterSettings);
 		UIManager.Instance.GetComponent<ControlDisplays>().jobSelectWindow.SetActive(false);
 		hasPickedAJob = true;
 	}
@@ -41,12 +39,17 @@ public class GUI_PlayerJobs : MonoBehaviour
 
 		foreach (GameObject occupationGo in GameManager.Instance.Occupations)
 		{
+
 			GameObject occupation = Instantiate(buttonPrefab);
 			JobType jobType = occupationGo.GetComponent<OccupationRoster>().Type;
+			//For nuke ops mode, syndis spawn via a different button
+			if(jobType == JobType.SYNDICATE){
+				continue;
+			}
 			int active = GameManager.Instance.GetOccupationsCount(jobType);
 			int available = GameManager.Instance.GetOccupationMaxCount(jobType);
 
-
+			occupation.name = jobType.ToString();
 			occupation.GetComponentInChildren<Text>().text = jobType + " (" + active + " of " + available + ")";
 			occupation.transform.SetParent(screen_Jobs.transform);
 			occupation.transform.localScale = new Vector3(1.0f, 1.0f, 1.0f);

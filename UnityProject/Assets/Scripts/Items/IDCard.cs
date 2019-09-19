@@ -1,7 +1,5 @@
 ﻿using System.Collections;
 using System.Collections.Generic;
-using AccessType;
-using UI;
 using UnityEngine;
 using UnityEngine.Networking;
 
@@ -17,11 +15,11 @@ public class IDCard : NetworkBehaviour
 	public Sprite commandSprite;
 
 	//What type of card? (standard, command, captain, emag etc)
-	[SyncVar(hook = "SyncIDCardType")] public int idCardTypeInt;
+	[SyncVar(hook = nameof(SyncIDCardType))] public int idCardTypeInt;
 
 	private bool isInit;
 
-	[SyncVar(hook = "SyncJobType")] public int jobTypeInt;
+	[SyncVar(hook = nameof(SyncJobType))] public int jobTypeInt;
 
 	[Tooltip("This is used to place ID cards via map editor and then setting their initial access type")]
 	public List<Access> ManuallyAddedAccess = new List<Access>();
@@ -31,7 +29,7 @@ public class IDCard : NetworkBehaviour
 
 	public int MiningPoints; //For redeeming at mining equipment vendors
 
-	[SyncVar(hook = "SyncName")] public string RegisteredName;
+	[SyncVar(hook = nameof(SyncName))] public string RegisteredName;
 
 	//To switch the card sprites when the type changes
 	public SpriteRenderer spriteRenderer;
@@ -53,6 +51,22 @@ public class IDCard : NetworkBehaviour
 		InitCard();
 		StartCoroutine(WaitForLoad());
 		base.OnStartClient();
+	}
+
+	/// <summary>
+	/// Configures the ID card with the specified settings
+	/// </summary>
+	/// <param name="idCardType">type of card</param>
+	/// <param name="jobType">job on the card</param>
+	/// <param name="allowedAccess">what the card can access</param>
+	/// <param name="name">name listed on card</param>
+	public void Initialize(IDCardType idCardType, JobType jobType, List<Access> allowedAccess, string name)
+	{
+		//Set all the synced properties for the card
+		RegisteredName = name;
+		jobTypeInt = (int) jobType;
+		idCardTypeInt = (int) idCardType;
+		AddAccessList(allowedAccess);
 	}
 
 	private void InitCard()
@@ -79,7 +93,7 @@ public class IDCard : NetworkBehaviour
 	//Sync all of the current in game ID's throughout the map with new players
 	private IEnumerator WaitForLoad()
 	{
-		yield return new WaitForSeconds(3f);
+		yield return WaitFor.Seconds(3f);
 		SyncName(RegisteredName);
 		SyncJobType(jobTypeInt);
 		SyncIDCardType(idCardTypeInt);
@@ -155,6 +169,6 @@ public class IDCard : NetworkBehaviour
 			message = "This is " + RegisteredName + "'s ID card\nThey are the " + GetJobType + " of the station!";
 		}
 
-		UIManager.Chat.AddChatEvent(new ChatEvent(message, ChatChannel.Examine));
+		ChatRelay.Instance.AddToChatLogClient(message, ChatChannel.Examine);
 	}
 }

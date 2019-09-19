@@ -1,148 +1,160 @@
-﻿using Sprites;
-using UnityEngine;
+﻿using UnityEngine;
 
-namespace PlayGroup
+public enum SpriteHandType
 {
-	public enum SpriteType
+	Other,
+	RightHand,
+	LeftHand
+}
+
+[RequireComponent(typeof(SpriteRenderer))]
+public class ClothingItem : MonoBehaviour
+{
+	/// <summary>
+	/// Absolute orientation
+	/// </summary>
+	private Orientation currentDirection = Orientation.Down;
+
+	public int reference = -1;
+	private int referenceOffset;
+	public Color color = Color.white;
+
+	public SpriteHandler spriteHandler;
+	//public SpriteRenderer spriteRenderer;
+	private Sprite[] sprites;
+
+	public string spriteSheetName;
+
+	public GameObject GameObjectReference;
+
+	//choice between left or right or other(clothing)
+	public SpriteHandType spriteType;
+
+	public PlayerScript thisPlayerScript;
+
+	/// <summary>
+	/// Direction clothing is facing (absolute)
+	/// </summary>
+	public Orientation Direction
 	{
-		Other,
-		RightHand,
-		LeftHand
+		set
+		{
+			currentDirection = value;
+			UpdateReferenceOffset();
+		}
+		get { return currentDirection; }
 	}
 
-	[RequireComponent(typeof(SpriteRenderer))]
-	public class ClothingItem : MonoBehaviour
+	private void Awake()
 	{
-		private Orientation currentDirection = Orientation.Down;
-		public int reference = -1;
-		private int referenceOffset;
+		sprites = SpriteManager.PlayerSprites[spriteSheetName];
+		UpdateSprite();
+	}
 
-		public SpriteRenderer spriteRenderer;
-		private Sprite[] sprites;
 
-		public string spriteSheetName;
+	public void SetColor(Color value)
+	{
 
-		//choice between left or right or other(clothing)
-		public SpriteType spriteType;
 
-		public PlayerScript thisPlayerScript;
-
-		public int Reference
+		color = value;
+		if (spriteHandler != null)
 		{
-			set
-			{
-				reference = value;
-				SetSprite();
-			}
-			get { return reference; }
+			spriteHandler.SetColor(value);
 		}
+		//SetColor
+		//spriteRenderer.color = value;
+	}
+	public void SetCustomisation(string Name, PlayerCustomisation type, BodyPartSpriteName part = BodyPartSpriteName.Null) { 
+	}
 
-		public Orientation Direction
+
+	public void SetReference(GameObject Item)
+	{
+		UpdateReferenceOffset();
+		//Logger.Log("Received!!" + this.name);
+		if (Item == null)
 		{
-			set
+			if (spriteHandler != null) //need to remove 
 			{
-				currentDirection = value;
-				UpdateReferenceOffset();
+				spriteHandler.Infos = null;
+				spriteHandler.PushTexture();
 			}
-			get { return currentDirection; }
 		}
-
-		private void Start()
+		if (Item != null)
 		{
-			sprites = SpriteManager.PlayerSprites[spriteSheetName];
-			UpdateSprite();
-		}
-
-		public void Clear()
-		{
-			Reference = -1;
-		}
-
-		private void SetSprite()
-		{
-			if (reference == -1)
+			GameObjectReference = Item;
+			//Logger.Log("DD!!" + Item.name);
+			//Logger.Log("is here!");
+			if (spriteType == SpriteHandType.RightHand || spriteType == SpriteHandType.LeftHand)
 			{
-				UpdateSprite();
-				return;
-			}
-
-			if (spriteType == SpriteType.Other)
-			{
-				reference = Reference;
-			}
-			else
-			{
-				string networkRef = Reference.ToString();
-				int code = (int) char.GetNumericValue(networkRef[0]);
-				networkRef = networkRef.Remove(0, 1);
-				int _reference = int.Parse(networkRef);
-				switch (code)
+				var SHD = Item.GetComponent<ItemAttributes>()?.spriteHandlerData;
+				if (SHD != null)
 				{
-					case 1:
-						spriteSheetName = "items_";
-						break;
-					case 2:
-						spriteSheetName = "clothing_";
-						break;
-					case 3:
-						spriteSheetName = "guns_";
-						break;
-				}
-				if (spriteType == SpriteType.RightHand)
-				{
-					spriteSheetName = spriteSheetName + "righthand";
-					reference = _reference;
-				}
-				else
-				{
-					spriteSheetName = spriteSheetName + "lefthand";
-					reference = _reference;
-				}
-			}
-
-			sprites = SpriteManager.PlayerSprites[spriteSheetName];
-			UpdateSprite();
-		}
-
-		private void UpdateReferenceOffset()
-		{
-			if (currentDirection == Orientation.Down)
-			{
-				referenceOffset = 0;
-			}
-			if (currentDirection == Orientation.Up)
-			{
-				referenceOffset = 1;
-			}
-			if (currentDirection == Orientation.Right)
-			{
-				referenceOffset = 2;
-			}
-			if (currentDirection == Orientation.Left)
-			{
-				referenceOffset = 3;
-			}
-
-			UpdateSprite();
-		}
-
-		private void UpdateSprite()
-		{
-			if (spriteRenderer != null)
-			{
-				if (reference >= 0)
-				{
-					//If reference -1 then clear the sprite
-					if (sprites != null)
+					spriteHandler.Infos = SHD.Infos;
+					if (spriteType == SpriteHandType.RightHand)
 					{
-						spriteRenderer.sprite = sprites[reference + referenceOffset];
+						spriteHandler.ChangeSprite(1);
 					}
-				}
-				else
-				{
-					spriteRenderer.sprite = null;
+					else
+					{
+						spriteHandler.ChangeSprite(0);
+					}
+					spriteHandler.PushTexture();
 				}
 			}
+			else {
+				var clothing = Item.GetComponent<Clothing>();
+				//Logger.Log("1");
+				if (clothing != null)
+				{
+					//Logger.Log("2");
+					clothing.Start(); //lagyy?
+					spriteHandler.Infos = clothing.SpriteInfo;
+					spriteHandler.ChangeSprite(clothing.ReturnState(ClothingVariantType.Default));
+					spriteHandler.PushTexture();
+				}
+			}
+		}
+		UpdateReferenceOffset();
+	}
+
+	private void UpdateReferenceOffset()
+	{
+		//Logger.Log("UpdateReferenceOffset" + currentDirection);
+		if (currentDirection == Orientation.Down)
+		{
+			referenceOffset = 0;
+		}
+		if (currentDirection == Orientation.Up)
+		{
+			referenceOffset = 1;
+		}
+		if (currentDirection == Orientation.Right)
+		{
+			referenceOffset = 2;
+		}
+		if (currentDirection == Orientation.Left)
+		{
+			referenceOffset = 3;
+		}
+
+		UpdateSprite();
+	}
+
+	public void UpdateSprite()
+	{
+		//Logger.Log("UpdateSprite");
+		//Logger.Log(this.name);
+		//Logger.Log("A");
+		if (spriteHandler != null)
+		{
+			//Logger.Log("B");
+			if (spriteHandler.Infos != null)
+			{
+				//Logger.Log("C");
+				spriteHandler.ChangeSpriteVariant(referenceOffset);
+			}
+
 		}
 	}
 }

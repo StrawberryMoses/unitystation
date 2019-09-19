@@ -1,11 +1,9 @@
-﻿using System;
 using System.Collections;
 using UnityEngine;
 using UnityEngine.UI;
 using UnityEngine.SceneManagement;
 
-namespace UI
-{
+
 	/// <summary>
 	///     Responds to any UI or game window size changes
 	///     and adjusts all the elements accordingly
@@ -17,12 +15,10 @@ namespace UI
 		private CameraResizer camResizer;
 		private CanvasScaler canvasScaler;
 		private GraphicRaycaster graphicRaycaster;
-		public RectTransform hudBottom;
 		private CameraZoomHandler cameraZoomHandler;
 
 		private bool monitorWindow;
 		private Canvas parentCanvas;
-		public RightPanelResize rightPanelResize;
 		private bool checkingDisplayOnLoad = false;
 
 		//Caches
@@ -33,7 +29,7 @@ namespace UI
 
 		private void Start()
 		{
-			cacheWidth = rightPanelResize.panelRectTransform.sizeDelta.x;
+			//cacheWidth = rightPanelResize.panelRectTransform.sizeDelta.x;
 			camResizer = FindObjectOfType<CameraResizer>();
 			parentCanvas = GetComponent<Canvas>();
 			canvasScaler = GetComponent<CanvasScaler>();
@@ -60,18 +56,21 @@ namespace UI
 				StartCoroutine(WaitForDisplay());
 			}
 		}
-	
+
 		private IEnumerator WaitForDisplay()
 		{
 			checkingDisplayOnLoad = true;
-			yield return new WaitForSeconds(0.2f);
+			yield return WaitFor.Seconds(0.2f);
 			screenWidthCache = Screen.width;
 			screenHeightCache = Screen.height;
-			AdjustHudBottom(rightPanelResize.panelRectTransform.sizeDelta);
+			//AdjustHudBottom(rightPanelResize.panelRectTransform.sizeDelta);
 			monitorWindow = true;
 			if (!Screen.fullScreen) {
 				StartCoroutine(ForceGameWindowAspect());
 			}
+#if UNITY_EDITOR || UNITY_IOS || UNITY_ANDROID
+			StartCoroutine( ForceGameWindowAspect() );
+#endif
 		}
 
 		private void Update()
@@ -82,69 +81,59 @@ namespace UI
 				if (screenWidthCache != Screen.width ||
 				    screenHeightCache != Screen.height)
 				{
-					Invoke("AdjustHudBottomDelay", 1f);
+					StartCoroutine(ForceGameWindowAspect());
 					monitorWindow = false;
 				}
 			}
 
-			if(Input.GetKey(KeyCode.Escape)){
+			if(KeyboardInputManager.IsEscapePressed()){
 				Screen.fullScreen = false;
-			}
-		}
-
-		//It takes some time for the screen to redraw, wait for 0.1f
-		private void AdjustHudBottomDelay()
-		{
-			AdjustHudBottom(rightPanelResize.panelRectTransform.sizeDelta);
-			if (!Screen.fullScreen)
-			{
-				StopCoroutine(ForceGameWindowAspect());
-				StartCoroutine(ForceGameWindowAspect());
-			}
-			else
-			{
-				monitorWindow = true;
 			}
 		}
 
 		private IEnumerator ForceGameWindowAspect()
 		{
-			yield return new WaitForSeconds(0.2f);
+			yield return WaitFor.Seconds(1.2f);
 			//The following conditions check if the screen width or height
 			//is an odd number. If it is, then it adjusted to be an even number
 			//This fixes the sprite bleeding between tiles:
 			int width = Screen.width;
 			if (width % 2 != 0)
 			{
-				Debug.Log( $"Odd width {width}->{width-1}" );
+				Logger.Log( $"Odd width {width}->{width-1}", Category.Camera );
 				width--;
 			}
 			int height = Screen.height;
 			if (height % 2 != 0)
 			{
-				Debug.Log( $"Odd height {height}->{height-1}" );
+				Logger.Log( $"Odd height {height}->{height-1}", Category.Camera );
 				height--;
 			}
-			
-			Debug.Log("Screen height before resizing: " + Camera.main.pixelHeight + " Aspect Y: " + height/(float)Screen.height);
-			Debug.Log("Screen height before resizing: " + Camera.main.pixelWidth + " Aspect X: " + width/(float)Screen.width);
-			
+
+			Camera main = Camera.main;
+			if ( !main )
+			{
+				yield break;
+			}
+			Logger.Log("Screen height before resizing: " + main.pixelHeight + " Aspect Y: " + height/(float)Screen.height, Category.Camera);
+			Logger.Log("Screen height before resizing: " + main.pixelWidth + " Aspect X: " + width/(float)Screen.width, Category.Camera);
+
 			// Enforce aspect by resizing the camera rectangle to nearest (lower) even number.
-			Camera.main.rect = new Rect(0, 0, width / (float)Screen.width, height / (float)Screen.height);
-			
-			Debug.Log("Screen height after resizing: " + Camera.main.pixelHeight);
-			
+			main.rect = new Rect(0, 0, width / (float)Screen.width, height / (float)Screen.height);
+
+			Logger.Log("Screen height after resizing: " + main.pixelHeight, Category.Camera);
+
 			if (camResizer != null) {
 				camResizer.AdjustCam();
 			}
 			screenWidthCache = Screen.width;
 			screenHeightCache = Screen.height;
-			
+
 			//Refresh UI (helps avoid event system problems)
 			parentCanvas.enabled = false;
 			canvasScaler.enabled = false;
 			graphicRaycaster.enabled = false;
-			yield return new WaitForEndOfFrame();
+			yield return WaitFor.EndOfFrame;
 			parentCanvas.enabled = true;
 			canvasScaler.enabled = true;
 			graphicRaycaster.enabled = true;
@@ -152,37 +141,4 @@ namespace UI
 			checkingDisplayOnLoad = false;
 			cameraZoomHandler.Refresh();
 		}
-
-		public void AdjustHudBottom(Vector2 panelRightSizeDelta)
-		{
-			Vector2 hudBottomSizeDelta = hudBottom.sizeDelta;
-			//This is when pulling the rightpanel to the right of the screen from default position
-			if (rightPanelResize.panelRectTransform.sizeDelta.x < cacheWidth)
-			{
-				//Calculate the new anchor point for hudBottom in the right direction of scale
-				float panelRightProgress = (cacheWidth - rightPanelResize.panelRight.rect.width) / cacheWidth;
-				float newAnchorPos = Mathf.Lerp(rightPanelResize.cacheHudAnchor, 0f, panelRightProgress);
-				Vector2 anchoredPos = hudBottom.anchoredPosition;
-				anchoredPos.x = -newAnchorPos;
-				hudBottom.anchoredPosition = anchoredPos;
-			}
-			else
-			{
-				// this is for the left direction from the default position
-				float panelRightProgress = (cacheWidth - rightPanelResize.panelRight.rect.width) / cacheWidth;
-				float newAnchorPos = Mathf.Lerp(rightPanelResize.cacheHudAnchor, 562f, Mathf.Abs(panelRightProgress));
-				Vector2 anchoredPos = hudBottom.anchoredPosition;
-				anchoredPos.x = -newAnchorPos;
-				hudBottom.anchoredPosition = anchoredPos;
-				hudBottomSizeDelta.x = -panelRightSizeDelta.x;
-				hudBottom.sizeDelta = hudBottomSizeDelta;
-			}
-			//KEEP ASPECT RATIO:
-			hudBottomSizeDelta.y = hudBottom.rect.width * rightPanelResize.originalHudSize.y /
-			                       rightPanelResize.originalHudSize.x;
-			hudBottom.sizeDelta = hudBottomSizeDelta;
-			UIManager.DisplayManager.SetCameraFollowPos(rightPanelResize.returnPanelButton.activeSelf);
-			UIManager.PlayerHealthUI.overlayCrits.AdjustOverlayPos();
-		}
 	}
-}

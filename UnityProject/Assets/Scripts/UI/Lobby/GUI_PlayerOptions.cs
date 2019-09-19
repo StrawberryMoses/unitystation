@@ -1,11 +1,9 @@
-﻿using PlayGroup;
-using UnityEngine;
+﻿using UnityEngine;
 using UnityEngine.UI;
 using Facepunch.Steamworks;
 
 
-namespace UI
-{
+
 	public class GUI_PlayerOptions : MonoBehaviour
 	{
 		private const string UserNamePlayerPref = "PlayerName";
@@ -63,7 +61,7 @@ namespace UI
 
 		public void EndEditOnEnter()
 		{
-			if (Input.GetKey(KeyCode.Return) || Input.GetKey(KeyCode.KeypadEnter))
+			if (KeyboardInputManager.IsEnterPressed())
 			{
 				BtnOk();
 			}
@@ -78,20 +76,16 @@ namespace UI
 			}
 
 			//Connecting as client
-			if (screen_ConnectTo.activeInHierarchy || Managers.instance.isForRelease)
+			if (screen_ConnectTo.activeInHierarchy || BuildPreferences.isForRelease)
 			{
-				PlayerPrefs.SetString(UserNamePlayerPref, playerNameInput.text);
-				PlayerManager.PlayerNameCache = playerNameInput.text;
 				ConnectToServer();
 				gameObject.SetActive(false);
-				UIManager.Chat.CurrentChannelText.text = "<color=green>Loading game please wait..</color>\r\n";
+		//		UIManager.Chat.CurrentChannelText.text = "<color=green>Loading game please wait..</color>\r\n";
 				return;
 			}
 
 			if (screen_PlayerName.activeInHierarchy && !hostServer.isOn)
 			{
-				PlayerPrefs.SetString(UserNamePlayerPref, playerNameInput.text);
-				PlayerManager.PlayerNameCache = playerNameInput.text;
 				screen_PlayerName.SetActive(false);
 				screen_ConnectTo.SetActive(true);
 				title.text = "Connection";
@@ -100,8 +94,6 @@ namespace UI
 			//Connecting as server from a map scene
 			if (screen_PlayerName.activeInHierarchy && hostServer.isOn && GameData.IsInGame)
 			{
-				PlayerPrefs.SetString(UserNamePlayerPref, playerNameInput.text);
-				PlayerManager.PlayerNameCache = playerNameInput.text;
 				networkManager.StartHost();
 				gameObject.SetActive(false);
 			}
@@ -109,8 +101,6 @@ namespace UI
 			//Connecting as server from the lobby
 			if (screen_PlayerName.activeInHierarchy && hostServer.isOn && !GameData.IsInGame)
 			{
-				PlayerPrefs.SetString(UserNamePlayerPref, playerNameInput.text);
-				PlayerManager.PlayerNameCache = playerNameInput.text;
 				networkManager.StartHost();
 				gameObject.SetActive(false);
 			}
@@ -118,7 +108,7 @@ namespace UI
 
 		private void ConnectToServer()
 		{
-			if (Managers.instance.isForRelease)
+			if (BuildPreferences.isForRelease)
 			{
 				networkManager.networkAddress = Managers.instance.serverIP;
 				networkManager.networkPort = 7777;
@@ -143,4 +133,3 @@ namespace UI
 			networkManager.StartClient();
 		}
 	}
-}

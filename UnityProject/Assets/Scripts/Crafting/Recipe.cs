@@ -1,19 +1,19 @@
 ﻿using System;
 using System.Collections.Generic;
 using UnityEngine;
+using UnityEngine.Serialization;
 
-namespace Crafting
-{
-	[Serializable]
+
+[Serializable]
 	public class Recipe
 	{
-		public Ingredient[] ingredients;
-		public string name;
-		public GameObject output;
+		public string Name;
+		public Ingredient[] Ingredients;
+		public GameObject Output;
 
 		public bool Check(List<Ingredient> other)
 		{
-			foreach (Ingredient ingredient in ingredients)
+			foreach (Ingredient ingredient in Ingredients)
 			{
 				if (!other.Contains(ingredient))
 				{
@@ -23,4 +23,3 @@ namespace Crafting
 			return true;
 		}
 	}
-}

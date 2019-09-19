@@ -1,4 +1,5 @@
-﻿using System.Collections;
+﻿using System;
+using System.Collections;
 using System.Reflection;
 using UnityEngine;
 using UnityEngine.Networking;
@@ -10,11 +11,16 @@ public abstract class GameMessageBase : MessageBase
 
 	public abstract IEnumerator Process();
 
+	public virtual IEnumerator Process( NetworkConnection sentBy )
+	{
+		yield return Process();
+	}
+
 	protected IEnumerator WaitFor(NetworkInstanceId id)
 	{
-		if (id.IsEmpty()) 
+		if (id.IsEmpty())
 		{
-			Debug.LogWarning($"{this} tried to wait on an empty (0) id");
+			Logger.LogWarningFormat( "{0} tried to wait on an empty (0) id", Category.NetMessage, this.GetType().Name );
 			yield break;
 		}
 
@@ -23,11 +29,11 @@ public abstract class GameMessageBase : MessageBase
 		{
 			if (tries++ > 10)
 			{
-				Debug.LogWarning($"{this} could not find object with id {id}");
+				Logger.LogWarningFormat( "{0} could not find object with id {1}", Category.NetMessage, this.GetType().Name, id );
 				yield break;
 			}
 
-			yield return YieldHelper.EndOfFrame;
+			yield return global::WaitFor.EndOfFrame;
 		}
 	}
 
@@ -44,7 +50,7 @@ public abstract class GameMessageBase : MessageBase
 
 		while (!AllLoaded(ids))
 		{
-			yield return YieldHelper.EndOfFrame;
+			yield return global::WaitFor.EndOfFrame;
 		}
 	}
 
@@ -52,7 +58,11 @@ public abstract class GameMessageBase : MessageBase
 	{
 		for (int i = 0; i < ids.Length; i++)
 		{
-			GameObject obj = ClientScene.FindLocalObject(ids[i]);
+			var netId = ids[i];
+			if ( netId == NetworkInstanceId.Invalid ) {
+				continue;
+			}
+			GameObject obj = ClientScene.FindLocalObject(netId);
 			if (obj == null)
 			{
 				return false;

@@ -1,11 +1,9 @@
 ﻿using System;
-using System.Threading.Tasks;
-using PlayGroup;
 using UnityEngine;
 using UnityEngine.UI;
+using System.Collections;
 
-namespace UI
-{
+
 	/// <summary>
 	///     To control the critical overlays (unconscious, dying, oxygen loss etc)
 	/// </summary>
@@ -22,12 +20,6 @@ namespace UI
 		public Image shroudImg;
 		public ShroudPreference unconsciousSettings;
 
-		public async void AdjustOverlayPos()
-		{
-			await Task.Delay(TimeSpan.FromSeconds(0.1f));
-			DoAdjust();
-		}
-
 		private void DoAdjust()
 		{
 			if (PlayerManager.LocalPlayer != null)
@@ -43,36 +35,41 @@ namespace UI
 			switch (state)
 			{
 				case OverlayState.normal:
-					AdjustShroud(normalSettings);
+					StartCoroutine(AdjustShroud(normalSettings));
 					break;
 				case OverlayState.injured:
-					AdjustShroud(injuredSettings);
+					StartCoroutine(AdjustShroud(injuredSettings));
 					break;
 				case OverlayState.unconscious:
-					AdjustShroud(unconsciousSettings);
+					StartCoroutine(AdjustShroud(unconsciousSettings));
 					break;
 				case OverlayState.crit:
-					AdjustShroud(critcalSettings);
+					StartCoroutine(AdjustShroud(critcalSettings));
 					break;
 				case OverlayState.death:
-					AdjustShroud(normalSettings);
+					StartCoroutine(AdjustShroud(normalSettings));
 					break;
 			}
 			currentState = state;
 		}
 
-		private async void AdjustShroud(ShroudPreference pref)
+		IEnumerator AdjustShroud(ShroudPreference pref)
 		{
-			await Task.Delay(TimeSpan.FromSeconds(0.1f));
+			yield return WaitFor.Seconds(.1f);
 			if (!pref.shroudActive)
 			{
+
 				shroudImg.enabled = false;
-				return;
+
+				yield break;
 			}
+
 			DoAdjust();
-			shroudImg.enabled = true;
+			holeMat.SetColor("_Color", pref.shroudColor);
 			holeMat.SetFloat("_Radius", pref.holeRadius);
 			holeMat.SetFloat("_Shape", pref.holeShape);
+
+			shroudImg.enabled = true;
 		}
 	}
 
@@ -82,6 +79,8 @@ namespace UI
 		public float holeRadius;
 		public float holeShape;
 		public bool shroudActive = true;
+
+		public Color shroudColor;
 	}
 
 	public enum OverlayState
@@ -92,4 +91,3 @@ namespace UI
 		crit,
 		death
 	}
-}

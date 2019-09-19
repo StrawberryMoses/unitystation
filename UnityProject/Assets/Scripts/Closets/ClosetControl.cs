@@ -1,249 +1,381 @@
-﻿using System.Collections;
+using System;
+using System.Collections;
 using System.Collections.Generic;
-using PlayGroup;
-using PlayGroups.Input;
-using Tilemaps;
-using Tilemaps.Behaviours.Layers;
-using Tilemaps.Behaviours.Objects;
-using UI;
+using System.Linq;
 using UnityEngine;
 using UnityEngine.Networking;
 
-namespace Cupboards
+/// <summary>
+/// Allows closet to be opened / closed / locked
+/// </summary>
+[RequireComponent(typeof(RightClickAppearance))]
+public class ClosetControl : NBMouseDropHandApplyInteractable, IRightClickable
 {
-	public class ClosetControl : InputTrigger
+	[Header("Contents that will spawn inside every locker of type")]
+	public List<GameObject> DefaultContents;
+
+	//Inventory
+	private IEnumerable<ObjectBehaviour> heldItems = new List<ObjectBehaviour>();
+	protected List<ObjectBehaviour> heldPlayers = new List<ObjectBehaviour>();
+
+	public bool IsClosed;
+	[SyncVar(hook = nameof(SetIsLocked))] public bool IsLocked;
+	public LockLightController lockLight;
+	public int playerLimit = 3;
+
+	private RegisterCloset registerTile;
+	private PushPull pushPull;
+	private Matrix matrix => registerTile.Matrix;
+	private ObjectBehaviour objectBehaviour;
+
+	[SyncVar(hook = nameof(SyncStatus))] public ClosetStatus statusSync;
+
+	protected Sprite doorClosed;
+	public Sprite doorOpened;
+	public SpriteRenderer spriteRenderer;
+
+	private void Awake()
 	{
-		private Sprite doorClosed;
-		public Sprite doorOpened;
+		doorClosed = spriteRenderer != null ? spriteRenderer.sprite : null;
+		registerTile = GetComponent<RegisterCloset>();
+		pushPull = GetComponent<PushPull>();
+		objectBehaviour = GetComponent<ObjectBehaviour>();
+		GetComponent<Integrity>().OnWillDestroyServer.AddListener(OnWillDestroyServer);
+	}
 
-		//Inventory
-		private IEnumerable<ObjectBehaviour> heldItems = new List<ObjectBehaviour>();
+	private void OnWillDestroyServer(DestructionInfo arg0)
+	{
+		//force it open
+		SetIsLocked(false);
+		SetIsClosed(false);
 
-		private IEnumerable<ObjectBehaviour> heldPlayers = new List<ObjectBehaviour>();
+		ObjectFactory.SpawnMetal(2, gameObject.TileWorldPosition(), parent: transform.parent);
+	}
 
-		[SyncVar(hook = nameof(OpenClose))] public bool IsClosed;
-
-		[SyncVar(hook = nameof(LockUnlock))] public bool IsLocked;
-		public GameObject items;
-		public LockLightController lockLight;
-		
-		private RegisterCloset registerTile;
-		private Matrix matrix => registerTile.Matrix;
-
-		public SpriteRenderer spriteRenderer;
-
-		private void Awake()
+	public override void OnStartServer()
+	{
+		StartCoroutine(WaitForServerReg());
+		foreach (GameObject itemPrefab in DefaultContents)
 		{
-			doorClosed = spriteRenderer.sprite;
+			PoolManager.PoolNetworkInstantiate(itemPrefab, transform.position, parent: transform.parent);
 		}
+	}
 
-		private void Start()
+	private IEnumerator WaitForServerReg()
+	{
+		yield return WaitFor.Seconds(1f);
+		SetIsClosed(true);
+	}
+
+	public override void OnStartClient()
+	{
+		SyncStatus( statusSync );
+		SetIsLocked(IsLocked);
+	}
+
+	public bool Contains(GameObject gameObject)
+	{
+		if (!IsClosed)
 		{
-			registerTile = GetComponent<RegisterCloset>();
+			return false;
 		}
-
-		public override void OnStartServer()
+		foreach (var player in heldPlayers)
 		{
-			StartCoroutine(WaitForServerReg());
-			base.OnStartServer();
-		}
-
-		private IEnumerator WaitForServerReg()
-		{
-			yield return new WaitForSeconds(1f);
-			IsClosed = true;
-			SetItems(!IsClosed);
-		}
-
-		public override void OnStartClient()
-		{
-			StartCoroutine(WaitForLoad());
-			base.OnStartClient();
-		}
-
-		private IEnumerator WaitForLoad()
-		{
-			yield return new WaitForSeconds(3f);
-			bool iC = IsClosed;
-			bool iL = IsLocked;
-			OpenClose(iC);
-			LockUnlock(iL);
-		}
-
-		[Server]
-		public void ServerToggleCupboard()
-		{
-			if (IsClosed)
+			if (player.gameObject == gameObject)
 			{
-				if (lockLight != null)
-				{
-					if (lockLight.IsLocked())
-					{
-						IsLocked = false;
-						return;
-					}
-					IsClosed = false;
-					SetItems(true);
-				}
-				else
-				{
-					IsClosed = false;
-					SetItems(true);
-				}
-			}
-			else
-			{
-				IsClosed = true;
-				SetItems(false);
+				return true;
 			}
 		}
-
-		private void OpenClose(bool isClosed)
+		foreach (var item in heldItems)
 		{
-			IsClosed = isClosed;
-			if (isClosed)
+			if (item.gameObject == gameObject)
 			{
-				Close();
-			}
-			else
-			{
-				Open();
+				return true;
 			}
 		}
+		return false;
+	}
 
-		private void LockUnlock(bool lockIt)
+	public void ToggleLocker()
+	{
+		SoundManager.PlayNetworkedAtPos("OpenClose", registerTile.WorldPositionServer, 1f);
+		if (IsClosed)
 		{
-			IsLocked = lockIt;
-			if (lockLight == null)
+			SetIsClosed(false);
+		}
+		else
+		{
+			SetIsClosed(true);
+		}
+	}
+
+	private void SetIsClosed(bool value)
+	{
+		IsClosed = value;
+		HandleItems();
+		StartCoroutine(ChangeSpriteDelayed());
+	}
+
+	private void SetIsLocked(bool value)
+	{
+		IsLocked = value;
+		if (lockLight)
+		{
+			if(IsLocked)
 			{
-				return;
-			}
-			if (lockIt)
-			{
+				lockLight.Lock();
 			}
 			else
 			{
 				lockLight.Unlock();
 			}
 		}
+	}
 
-		private void Close()
+	public IEnumerator ChangeSpriteDelayed()
+	{
+		yield return WaitFor.EndOfFrame;
+		ChangeSprite();
+	}
+
+	public void ChangeSprite()
+	{
+		if(IsClosed)
 		{
-			registerTile.IsClosed = true;
-			SoundManager.PlayAtPosition("OpenClose", transform.position);
-			spriteRenderer.sprite = doorClosed;
-			if (lockLight != null)
+			if(heldPlayers.Count > 0)
 			{
-				lockLight.Show();
+				statusSync = ClosetStatus.ClosedWithOccupant;
+			}
+			else
+			{
+				statusSync = ClosetStatus.Closed;
 			}
 		}
+		else
+		{
+			statusSync = ClosetStatus.Open;
+		}
+	}
 
-		private void Open()
+	public enum ClosetStatus
+	{
+		Closed,
+		ClosedWithOccupant,
+		Open
+	}
+
+	private void SyncStatus(ClosetStatus value)
+	{
+		statusSync = value;
+		if(value == ClosetStatus.Open)
 		{
 			registerTile.IsClosed = false;
-			SoundManager.PlayAtPosition("OpenClose", transform.position);
+		}
+		else
+		{
+			registerTile.IsClosed = true;
+		}
+		SyncSprite(value);
+	}
+
+	public virtual void SyncSprite(ClosetStatus value)
+	{
+		if (value == ClosetStatus.Open)
+		{
 			spriteRenderer.sprite = doorOpened;
-			if (lockLight != null)
+			if (lockLight)
 			{
 				lockLight.Hide();
 			}
 		}
-
-		public override void Interact(GameObject originator, Vector3 position, string hand)
+		else
 		{
-			//FIXME this should be rewritten to net messages, see i.e. TableTrigger
-			if (Input.GetKey(KeyCode.LeftControl))
+			spriteRenderer.sprite = doorClosed;
+			if (lockLight)
 			{
-				return;
+				lockLight.Show();
 			}
+		}
+	}
 
-			if (PlayerManager.PlayerInReach(transform))
+	public bool CanUse(GameObject originator, string hand, Vector3 position, bool allowSoftCrit = false)
+	{
+		var playerScript = originator.GetComponent<PlayerScript>();
+
+		if (playerScript.canNotInteract() && (!playerScript.playerHealth.IsSoftCrit || !allowSoftCrit))
+		{
+			return false;
+		}
+
+		if (!playerScript.IsInReach(position, false))
+		{
+			if(isServer && !Contains(originator))
 			{
-				if (IsClosed)
-				{
-					PlayerManager.LocalPlayerScript.playerNetworkActions.CmdToggleCupboard(gameObject);
-					return;
-				}
-
-				GameObject item = UIManager.Hands.CurrentSlot.Item;
-				if (item != null)
-				{
-					Vector3 targetPosition = Camera.main.ScreenToWorldPoint(Input.mousePosition);
-					targetPosition.z = 0f;
-					PlayerManager.LocalPlayerScript.playerNetworkActions.CmdPlaceItem(
-						UIManager.Hands.CurrentSlot.eventName, transform.position, null);
-
-					item.BroadcastMessage("OnRemoveFromInventory", null, SendMessageOptions.DontRequireReceiver);
-				}
-				else
-				{
-					PlayerManager.LocalPlayerScript.playerNetworkActions.CmdToggleCupboard(gameObject);
-				}
+				return false;
 			}
 		}
 
-		private void SetItems(bool open)
+		return true;
+	}
+
+	protected override bool WillInteract(HandApply interaction, NetworkSide side)
+	{
+		if (!base.WillInteract(interaction, side)) return false;
+
+		//only allow interactions targeting this closet
+		if (interaction.TargetObject != gameObject) return false;
+
+		return true;
+	}
+
+	protected override void ServerPerformInteraction(MouseDrop interaction)
+	{
+
+	}
+
+	protected override void ServerPerformInteraction(HandApply interaction)
+	{
+
+		//Is the player trying to put something in the closet
+		if (interaction.HandObject != null && !IsClosed)
 		{
-			if (!open)
+			PlayerNetworkActions pna = interaction.Performer.GetComponent<PlayerNetworkActions>();
+			pna.CmdPlaceItem(interaction.HandSlot.equipSlot, registerTile.WorldPosition, null, false);
+		}
+		else if (!IsLocked)
+		{
+			ToggleLocker();
+		}
+	}
+
+	public virtual void HandleItems()
+	{
+		if (IsClosed)
+		{
+			CloseItemHandling();
+			ClosePlayerHandling();
+		}
+		else
+		{
+			OpenItemHandling();
+			OpenPlayerHandling();
+		}
+	}
+
+	private void OpenItemHandling()
+	{
+		foreach (ObjectBehaviour item in heldItems)
+		{
+			CustomNetTransform netTransform = item.GetComponent<CustomNetTransform>();
+			//avoids blinking of premapped items when opening first time in another place:
+			Vector3Int pos = registerTile.WorldPositionServer;
+			netTransform.AppearAtPosition(pos);
+			if (pushPull && pushPull.Pushable.IsMovingServer)
 			{
-				SetItemsAliveState(false);
-				SetPlayersAliveState(false);
+				netTransform.InertiaDrop(pos, pushPull.Pushable.SpeedServer,
+					pushPull.InheritedImpulse.To2Int());
 			}
 			else
 			{
-				SetItemsAliveState(true);
-				SetPlayersAliveState(true);
+//				netTransform.AppearAtPositionServer(pos);
+				item.VisibleState = true; //should act identical to line above
 			}
+			item.parentContainer = null;
 		}
 
-		private void SetItemsAliveState(bool on)
+		heldItems = Enumerable.Empty<ObjectBehaviour>();
+	}
+
+	private void CloseItemHandling()
+	{
+		heldItems = matrix.Get<ObjectBehaviour>(registerTile.LocalPositionServer, ObjectType.Item, true);
+		foreach (ObjectBehaviour item in heldItems)
 		{
-			if (!on)
-			{
-				heldItems = matrix.Get<ObjectBehaviour>(registerTile.Position, ObjectType.Item);
-			}
-			foreach (ObjectBehaviour item in heldItems)
-			{
-				CustomNetTransform netTransform = item.GetComponent<CustomNetTransform>();
-				if (on)
-				{
-					netTransform.AppearAtPositionServer(transform.position);
-//					item.transform.position = transform.position;
-				}
-				else
-				{
-					netTransform.DisappearFromWorldServer();
-				}
-
-				item.visibleState = on;
-			}
+			item.parentContainer = objectBehaviour;
+			item.VisibleState = false;
 		}
+	}
 
-		private void SetPlayersAliveState(bool on)
+	private void OpenPlayerHandling()
+	{
+		foreach (ObjectBehaviour player in heldPlayers)
 		{
-			if (!on)
+			player.VisibleState = true;
+			if (pushPull && pushPull.Pushable.IsMovingServer)
 			{
-				heldPlayers = matrix.Get<ObjectBehaviour>(registerTile.Position, ObjectType.Player);
+				player.TryPush(pushPull.InheritedImpulse.To2Int(),pushPull.Pushable.SpeedServer);
 			}
+			player.parentContainer = null;
 
-			foreach (ObjectBehaviour player in heldPlayers)
-			{
-				if (on)
-				{
-					player.transform.position = transform.position;
-					player.GetComponent<IPlayerSync>().SetPosition(transform.position);
-				}
-				player.visibleState = on;
-
-				if (!on)
-				{
-					//Make sure a ClosetPlayerHandler is created on the client to monitor 
-					//the players input inside the storage. The handler also controls the camera follow targets:
-					if (!player.GetComponent<PlayerMove>().isGhost) {
-						ClosetHandlerMessage.Send(player.gameObject, gameObject);
-					}
-				}
-			}
+			//Stop tracking closet
+			ClosetHandlerMessage.Send(player.gameObject, null);
 		}
+		heldPlayers = new List<ObjectBehaviour>();
+	}
+
+	private void ClosePlayerHandling()
+	{
+		var mobsFound = matrix.Get<ObjectBehaviour>(registerTile.LocalPositionServer, ObjectType.Player, true);
+		int mobsIndex = 0;
+		foreach (ObjectBehaviour player in mobsFound)
+		{
+			if(mobsIndex >= playerLimit)
+			{
+				return;
+			}
+			mobsIndex++;
+			StorePlayer(player);
+		}
+	}
+
+	public void StorePlayer(ObjectBehaviour player)
+	{
+		heldPlayers.Add(player);
+		var playerScript = player.GetComponent<PlayerScript>();
+
+		player.VisibleState = false;
+		player.parentContainer = objectBehaviour;
+
+		//Start tracking closet
+		if (!playerScript.IsGhost)
+		{
+			ClosetHandlerMessage.Send(player.gameObject, gameObject);
+		}
+	}
+
+	/// <summary>
+	/// Invoked when the parent net ID of this closet's RegisterCloset changes. Updates the parent net ID of the player / items
+	/// in the closet, passing the update on to their RegisterTile behaviors.
+	/// </summary>
+	/// <param name="parentNetId">new parent net ID</param>
+	public void OnParentChangeComplete(NetworkInstanceId parentNetId)
+	{
+		foreach (ObjectBehaviour objectBehaviour in heldItems)
+		{
+			objectBehaviour.registerTile.ParentNetId = parentNetId;
+		}
+
+		foreach (ObjectBehaviour objectBehaviour in heldPlayers)
+		{
+			objectBehaviour.registerTile.ParentNetId = parentNetId;
+		}
+	}
+
+	public RightClickableResult GenerateRightClickOptions()
+	{
+		var result = RightClickableResult.Create();
+
+		if (WillInteract(HandApply.ByLocalPlayer(gameObject), NetworkSide.Client))
+		{
+			result.AddElement("OpenClose", RightClickInteract);
+		}
+
+
+		return result;
+	}
+
+	private void RightClickInteract()
+	{
+		Interact(HandApply.ByLocalPlayer(gameObject));
 	}
 }

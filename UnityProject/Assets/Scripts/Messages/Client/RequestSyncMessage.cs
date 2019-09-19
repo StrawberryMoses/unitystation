@@ -1,5 +1,4 @@
 using System.Collections;
-using UnityEngine;
 using UnityEngine.Networking;
 
 /// <summary>
@@ -12,25 +11,34 @@ public class RequestSyncMessage : ClientMessage
 
 	public override IEnumerator Process()
 	{
-//		Debug.Log("Processed " + ToString());
+//		Logger.Log("Processed " + ToString());
+		Logger.Log($"{SentByPlayer} requested sync", Category.Connections);
 
-		yield return WaitFor(SentBy);
+		//not sending out sync data for players not ingame
+		if ( SentByPlayer.Job != JobType.NULL && !SentByPlayer.Synced ) {
+			CustomNetworkManager.Instance.SyncPlayerData(SentByPlayer.GameObject);
 
-		ConnectedPlayer connectedPlayer = PlayerList.Instance.Get( NetworkObject );
-		Debug.Log($"{connectedPlayer} requested sync");
-		
-		//not sending out sync data for players not ingame 
-		if ( connectedPlayer.Job != JobType.NULL && !connectedPlayer.Synced ) {
-			CustomNetworkManager.Instance.SyncPlayerData(NetworkObject);
-			
 			//marking player as synced to avoid sending that data pile again
-			connectedPlayer.Synced = true;
+			SentByPlayer.Synced = true;
+
+			AnnounceNewPlayer( SentByPlayer );
 		}
+		yield return null;
+	}
+
+	private static void AnnounceNewPlayer( ConnectedPlayer newPlayer ) {
+		if ( newPlayer.Job == JobType.SYNDICATE ) {
+			return;
+		}
+		var chatEvent = new ChatEvent( $"{newPlayer.Job.JobString()} {newPlayer.Name} has arrived at the station. " +
+		                               $"Have a pleasant day! Try not to die...", ChatChannel.System, true );
+		AnnouncementMessage.SendToAll( chatEvent.message );
+		ChatRelay.Instance.AddToChatLogServer( chatEvent );
 	}
 
 	public override string ToString()
 	{
-		return $"[RequestSyncMessage Type={MessageType} SentBy={SentBy}]";
+		return $"[RequestSyncMessage Type={MessageType} SentBy={SentByPlayer}]";
 	}
 
 	public override void Deserialize(NetworkReader reader)

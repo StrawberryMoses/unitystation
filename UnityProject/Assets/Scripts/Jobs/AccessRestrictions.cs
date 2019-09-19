@@ -1,32 +1,26 @@
-﻿using AccessType;
-using UnityEngine;
+﻿using UnityEngine;
 
 
-// This manages access via ID cards. 
+// This manages access via ID cards.
 public class AccessRestrictions : MonoBehaviour
 {
 	public Access restriction;
 
 	public bool CheckAccess(GameObject Player)
 	{
-		return CheckAccess(Player, gameObject);
-	}
-
-	public bool CheckAccess(GameObject Player, GameObject Object)
-	{
 		IDCard card;
 		PlayerNetworkActions PNA = Player.GetComponent<PlayerNetworkActions>();
 
 		// Check for an ID card
-		if (PNA.Inventory["id"] != null &&
-		    PNA.Inventory["id"].GetComponent<IDCard>() != null)
+		if (PNA.Inventory.ContainsKey(EquipSlot.id) &&
+		    PNA.Inventory[EquipSlot.id].Item?.GetComponent<IDCard>() != null)
 		{
-			card = PNA.Inventory["id"].GetComponent<IDCard>();
+			card = PNA.Inventory[EquipSlot.id].Item.GetComponent<IDCard>();
 		}
-		else if (PNA.Inventory[PNA.activeHand + "Hand"] != null &&
-		         PNA.Inventory[PNA.activeHand + "Hand"].GetComponent<IDCard>() != null)
+		else if (PNA.Inventory.ContainsKey(PNA.activeHand) &&
+		         PNA.Inventory[PNA.activeHand].Item?.GetComponent<IDCard>() != null)
 		{
-			card = PNA.Inventory[PNA.activeHand + "Hand"].GetComponent<IDCard>();
+			card = PNA.Inventory[PNA.activeHand].Item.GetComponent<IDCard>();
 		}
 		else
 		{

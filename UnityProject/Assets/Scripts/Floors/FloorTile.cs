@@ -6,15 +6,6 @@ public class FloorTile : MonoBehaviour
 	public GameObject ambientTile;
 	public GameObject fireScorch;
 
-	public void AddFireScorch()
-	{
-		if (fireScorch == null)
-		{
-			//Do poolspawn here
-			fireScorch = EffectsFactory.Instance.SpawnScorchMarks(transform);
-		}
-	}
-
 	private void Start()
 	{
 		CheckAmbientTile();
@@ -34,7 +25,7 @@ public class FloorTile : MonoBehaviour
 		if (fireScorch != null)
 		{
 			fireScorch.transform.parent = null;
-			PoolManager.Instance.PoolClientDestroy(fireScorch);
+			PoolManager.PoolClientDestroy(fireScorch);
 		}
 	}
 }

@@ -1,10 +1,7 @@
 ﻿using System;
 using System.Collections;
 using System.Collections.Generic;
-using System.Globalization;
 using System.Linq;
-using PlayGroup;
-using UI;
 using UnityEngine;
 using UnityEngine.Networking;
 
@@ -16,6 +13,9 @@ public class PlayerList : NetworkBehaviour
 	private static List<ConnectedPlayer> values = new List<ConnectedPlayer>();
 	private static List<ConnectedPlayer> oldValues = new List<ConnectedPlayer>();
 
+	private static List<ConnectedPlayer> loggedOff = new List<ConnectedPlayer>();
+
+
 	//For client needs: updated via UpdateConnectedPlayersMessage, useless for server
 	public List<ClientConnectedPlayer> ClientConnectedPlayers = new List<ClientConnectedPlayer>();
 
@@ -23,24 +23,39 @@ public class PlayerList : NetworkBehaviour
 	public int ConnectionCount => values.Count;
 	public List<ConnectedPlayer> InGamePlayers => values.FindAll( player => player.GameObject != null );
 
+	public bool reportDone = false;
+
 	//For TDM demo
-	public Dictionary<JobDepartment, int> departmentScores = new Dictionary<JobDepartment, int>();
+	//public Dictionary<JobDepartment, int> departmentScores = new Dictionary<JobDepartment, int>();
 
 	//For combat demo
 	public Dictionary<string, int> playerScores = new Dictionary<string, int>();
 
-	//For job formatting purposes
-	private static readonly TextInfo textInfo = new CultureInfo("en-US", false).TextInfo;
+	//Nuke Ops (TODO: throughoutly remove all unnecessary TDM variables)
+	public bool nukeSetOff = false;
+	//Kill counts for crew members and syndicate for display at end of round, similar to past TDM department scores
+	public int crewKills;
+	public int syndicateKills;
+
 
 	private void Awake()
 	{
 		if ( Instance == null )
 		{
 			Instance = this;
+			Instance.ResetSyncedState();
 		}
 		else
 		{
 			Destroy(gameObject);
+		}
+	}
+
+	/// Allowing players to sync after round restart
+	public void ResetSyncedState() {
+		for ( var i = 0; i < values.Count; i++ ) {
+			var player = values[i];
+			player.Synced = false;
 		}
 	}
 
@@ -52,36 +67,26 @@ public class PlayerList : NetworkBehaviour
 		{
 			return;
 		}
+		var perPlayer = perpetrator.Player();
+		var victimPlayer = victim.Player();
+		if ( perPlayer == null || victimPlayer == null ) {
+			return;
+		}
 
-		var playerName = Get(perpetrator, true).Name;
+		var playerName = perPlayer.Name;
 		if ( playerScores.ContainsKey(playerName) )
 		{
 			playerScores[playerName]++;
 		}
 
-		JobType perpetratorJob = perpetrator.GetComponent<PlayerScript>().JobType;
-		JobDepartment perpetratorDept = SpawnPoint.GetJobDepartment(perpetratorJob);
-
-		if ( !departmentScores.ContainsKey(perpetratorDept) )
+		//If killer is syndicate, add kills to syndicate score, if not - to crew.
+		if(perPlayer.Job == JobType.SYNDICATE)
 		{
-			departmentScores.Add(perpetratorDept, 0);
-		}
-
-		if ( victim == null )
-		{
-			return;
-		}
-
-		JobType victimJob = victim.GetComponent<PlayerScript>().JobType;
-		JobDepartment victimDept = SpawnPoint.GetJobDepartment(victimJob);
-
-		if ( perpetratorDept == victimDept )
-		{
-			departmentScores[perpetratorDept]--;
+			syndicateKills++;
 		}
 		else
 		{
-			departmentScores[perpetratorDept]++;
+			crewKills++;
 		}
 	}
 
@@ -97,30 +102,82 @@ public class PlayerList : NetworkBehaviour
 	[Server]
 	public void ReportScores()
 	{
-		/*
-		var scoreSort = playerScores.OrderByDescending(pair => pair.Value)
-		    .ToDictionary(pair => pair.Key, pair => pair.Value);
-
-		foreach (KeyValuePair<string, int> ps in scoreSort)
+		if (!reportDone)
 		{
-		    UIManager.Chat.ReportToChannel("<b>" + ps.Key + "</b>  total kills:  <b>" + ps.Value + "</b>");
-		}
-		*/
+			//if (!nukeSetOff && syndicateKills == 0 && crewKills == 0)
+			//{
+			//	PostToChatMessage.Send("Nobody killed anybody. Fucking hippies.", ChatChannel.System);
+			//}
 
-		if ( departmentScores.Count == 0 )
+			if (nukeSetOff)
+			{
+				PostToChatMessage.Send("Nuke has been detonated, <b>Syndicate wins.</b>", ChatChannel.System);
+				ReportKills();
+			}
+			else
+			{
+				int alivePlayers = GetAlivePlayers().Count;
+				int crewCountOnboard = GetAliveShuttleCrew().Count;
+				if (alivePlayers > 0 && crewCountOnboard == 0)
+				{
+					PostToChatMessage.Send("Station crew failed to escape, <b>Syndicate wins.</b>", ChatChannel.System);
+					ReportKills();
+				}
+				else if (alivePlayers == 0)
+				{
+					PostToChatMessage.Send("All crew members are dead, <b>Syndicate wins.</b>", ChatChannel.System);
+					ReportKills();
+				}
+				else if (alivePlayers > 0 && crewCountOnboard > 0)
+				{
+					PostToChatMessage.Send(crewCountOnboard + " Crew member(s) have managed to escape the station. <b>Syndicate lost.</b>", ChatChannel.System);
+					ReportKills();
+				}
+			}
+
+			PostToChatMessage.Send("Game Restarting in 30 seconds...", ChatChannel.System);
+			reportDone = true;
+		}
+
+		List<ConnectedPlayer> GetAliveShuttleCrew()
 		{
-			PostToChatMessage.Send("Nobody killed anybody. Fucking hippies.", ChatChannel.System);
+			var playersOnMatrix = GetPlayersOnMatrix(GameManager.Instance.PrimaryEscapeShuttle.MatrixInfo);
+			return GetAlivePlayers( playersOnMatrix ).FindAll( p => p.Job != JobType.SYNDICATE );
 		}
+	}
 
-		var scoreSort = departmentScores.OrderByDescending(pair => pair.Value)
-			.ToDictionary(pair => pair.Key, pair => pair.Value);
-
-		foreach ( KeyValuePair<JobDepartment, int> ds in scoreSort )
+	[Server]
+	public void ReportKills()
+	{
+		if (syndicateKills != 0)
 		{
-			PostToChatMessage.Send("<b>" + ds.Key + "</b>  total kills:  <b>" + ds.Value + "</b>", ChatChannel.System);
+			PostToChatMessage.Send("Syndicate managed to kill " + syndicateKills + " crew members.", ChatChannel.System);
 		}
 
-		PostToChatMessage.Send("Game Restarting in 10 seconds...", ChatChannel.System);
+		if (crewKills != 0)
+		{
+			PostToChatMessage.Send("Crew managed to kill " + crewKills + " Syndicate operators.", ChatChannel.System);
+		}
+	}
+
+
+
+	/// <summary>
+	/// Get all players currently located on provided matrix
+	/// </summary>
+	public List<ConnectedPlayer> GetPlayersOnMatrix( MatrixInfo matrix )
+	{
+		return InGamePlayers.FindAll( p => p.Script.registerTile.Matrix.Id == matrix.Id );
+	}
+
+	public List<ConnectedPlayer> GetAlivePlayers(List<ConnectedPlayer> players = null)
+	{
+		if ( players == null )
+		{
+			players = InGamePlayers;
+		}
+
+		return players.FindAll( p => !p.Script.IsGhost && p.Script.playerMove.allowInput );
 	}
 
 	public void RefreshPlayerListText()
@@ -129,13 +186,8 @@ public class PlayerList : NetworkBehaviour
 		foreach (var player in ClientConnectedPlayers)
 		{
 			string curList = UIManager.Instance.playerListUIControl.nameList.text;
-			UIManager.Instance.playerListUIControl.nameList.text = $"{curList}{player.Name} ({PrepareJobString(player.Job)})\r\n";
+			UIManager.Instance.playerListUIControl.nameList.text = $"{curList}{player.Name} ({player.Job.JobString()})\r\n";
 		}
-	}
-
-	private static string PrepareJobString(JobType job)
-	{
-		return job.ToString().Equals("NULL") ? "*just joined" : textInfo.ToTitleCase(job.ToString().ToLower());
 	}
 
 	/// Don't do this unless you realize the consequences
@@ -145,11 +197,17 @@ public class PlayerList : NetworkBehaviour
 		values.Clear();
 	}
 
+	/// <summary>
+	/// Set this user's controlled game object to newGameObject (which may be a ghost or a body)
+	/// </summary>
+	/// <param name="conn">connection whose object should be updated</param>
+	/// <param name="newGameObject">new game object they are controlling (should be a ghost or a body)</param>
 	[Server]
 	public void UpdatePlayer(NetworkConnection conn, GameObject newGameObject)
 	{
 		ConnectedPlayer connectedPlayer = Get(conn);
 		connectedPlayer.GameObject = newGameObject;
+		CheckRcon();
 	}
 
 	/// Add previous ConnectedPlayer state to the old values list
@@ -177,12 +235,12 @@ public class PlayerList : NetworkBehaviour
 	{
 		if ( player.Equals(ConnectedPlayer.Invalid) )
 		{
-			Debug.Log("Refused to add invalid connected player");
+			Logger.Log("Refused to add invalid connected player", Category.Connections);
 			return;
 		}
 		if ( ContainsConnection(player.Connection) )
 		{
-//			Debug.Log($"Updating {Get(player.Connection)} with {player}");
+//			Logger.Log($"Updating {Get(player.Connection)} with {player}");
 			ConnectedPlayer existingPlayer = Get(player.Connection);
 			existingPlayer.GameObject = player.GameObject;
 			existingPlayer.Name = player.Name; //Note that name won't be changed to empties/nulls
@@ -192,86 +250,89 @@ public class PlayerList : NetworkBehaviour
 		else
 		{
 			values.Add(player);
-			Debug.Log($"Added {player}. Total:{values.Count}; {string.Join("; ",values)}");
+			Logger.LogFormat("Added {0}. Total:{1}; {2}", Category.Connections, player, values.Count, string.Join(";", values));
 			//Adding kick timer for new players only
 			StartCoroutine(KickTimer(player));
 		}
+		CheckRcon();
 	}
 
 	private IEnumerator KickTimer(ConnectedPlayer player)
 	{
-		if ( IsConnWhitelisted( player ) || !Managers.instance.isForRelease )
+		if ( IsConnWhitelisted( player ) || !BuildPreferences.isForRelease )
 		{
-//			Debug.Log( "Ignoring kick timer for invalid connection" );
+//			Logger.Log( "Ignoring kick timer for invalid connection" );
 			yield break;
 		}
-		int tries = 5;
-		while ( !player.IsAuthenticated )
-		{			
-			if ( tries-- < 0 )
+		int tries = 10; // 10 second wait, just incase of slow loading on lower end machines
+		while (!player.IsAuthenticated)
+		{
+			if (tries-- < 0)
 			{
-				CustomNetworkManager.Kick( player, "Auth timed out" );
+				CustomNetworkManager.Kick(player, "Auth timed out");
 				yield break;
 			}
-			yield return YieldHelper.Second;
+			yield return WaitFor.Seconds(1);
 		}
 	}
 
 	public static bool IsConnWhitelisted( ConnectedPlayer player )
 	{
-		return player.Connection == null || 
-		       player.Connection == ConnectedPlayer.Invalid.Connection ||
-		       !player.Connection.isConnected;
+		return player.Connection == null ||
+			   player.Connection == ConnectedPlayer.Invalid.Connection ||
+			   !player.Connection.isConnected;
 	}
 
 	[Server]
 	private void TryRemove(ConnectedPlayer player)
 	{
-		Debug.Log($"Removed {player}");
+		Logger.Log($"Removed {player}", Category.Connections);
+		loggedOff.Add(player);
 		values.Remove(player);
 		AddPrevious( player );
-		NetworkServer.Destroy(player.GameObject);
 		UpdateConnectedPlayersMessage.Send();
+		CheckRcon();
 	}
 
 	[Server]
 	public void Add(ConnectedPlayer player) => TryAdd(player);
 
+	[Server]
 	public bool ContainsConnection(NetworkConnection connection)
 	{
 		return !Get(connection).Equals(ConnectedPlayer.Invalid);
 	}
-	
+
 	[Server]
 	public bool ContainsName(string name)
 	{
 		return !Get(name).Equals(ConnectedPlayer.Invalid);
 	}
-	
+
 	[Server]
 	public bool ContainsGameObject(GameObject gameObject)
 	{
 		return !Get(gameObject).Equals(ConnectedPlayer.Invalid);
 	}
-	
+
 	[Server]
 	public ConnectedPlayer Get(NetworkConnection byConnection, bool lookupOld = false)
 	{
 		return getInternal(player => player.Connection == byConnection, lookupOld);
 	}
-	
+
 	[Server]
 	public ConnectedPlayer Get(string byName, bool lookupOld = false)
 	{
 		return getInternal(player => player.Name == byName, lookupOld);
 	}
-	
+
 	[Server]
 	public ConnectedPlayer Get(GameObject byGameObject, bool lookupOld = false)
 	{
 		return getInternal(player => player.GameObject == byGameObject, lookupOld);
-	}	
-	
+	}
+
 	[Server]
 	public ConnectedPlayer Get(ulong bySteamId, bool lookupOld = false)
 	{
@@ -293,7 +354,7 @@ public class PlayerList : NetworkBehaviour
 			{
 				if ( condition(oldValues[i]) )
 				{
-					Debug.Log( $"Returning old player {oldValues[i]}" );
+					Logger.Log( $"Returning old player {oldValues[i]}", Category.Connections);
 					return oldValues[i];
 				}
 			}
@@ -308,11 +369,43 @@ public class PlayerList : NetworkBehaviour
 		ConnectedPlayer connectedPlayer = Get(connection);
 		if ( connectedPlayer.Equals(ConnectedPlayer.Invalid) )
 		{
-			Debug.LogError($"Cannot remove by {connection}, not found");
+			Logger.LogError($"Cannot remove by {connection}, not found", Category.Connections);
 		}
 		else
 		{
 			TryRemove(connectedPlayer);
+		}
+	}
+
+	[Server]
+	private void CheckRcon(){
+		if(RconManager.Instance != null){
+			RconManager.UpdatePlayerListRcon();
+		}
+	}
+
+	[Server]
+	public GameObject TakeLoggedOffPlayer(ulong steamId)
+	{
+		foreach (var player in loggedOff)
+		{
+			if (player.SteamId == steamId)
+			{
+				loggedOff.Remove(player);
+				return player.GameObject;
+			}
+		}
+		return null;
+	}
+
+	[Server]
+	public void UpdateLoggedOffPlayer(GameObject newBody, GameObject oldBody){
+		for (int i = 0; i < loggedOff.Count; i++)
+		{
+			var player = loggedOff[i];
+			if(player.GameObject == oldBody){
+				player.GameObject = newBody;
+			}
 		}
 	}
 }

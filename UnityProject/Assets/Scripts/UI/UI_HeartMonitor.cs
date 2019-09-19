@@ -1,184 +1,156 @@
 ﻿using System.Collections;
-using PlayGroup;
-using Sprites;
+using System.Collections.Generic;
 using UnityEngine;
 using UnityEngine.SceneManagement;
 using UnityEngine.UI;
+using UnityEngine.EventSystems;
 
-namespace UI
+/// <summary>
+///     Controller for the heart monitor GUI
+/// </summary>
+public class UI_HeartMonitor : TooltipMonoBehaviour
 {
-	/// <summary>
-	///     Controller for the heart monitor GUI
-	/// </summary>
-	public class UI_HeartMonitor : MonoBehaviour
+	public override string Tooltip => "health";
+
+	public int critStart;
+	private int currentSprite = 0;
+	public int deathStart;
+
+	[Header("Start of sprite positions for anim")] public int fullHealthStart;
+	public int medDmgStart;
+	public int minorDmgStart;
+	public int mjrDmgStart;
+
+	//FIXME doing overlayCrit update based off heart monitor for time being
+	public OverlayCrits overlayCrits;
+
+	public Image pulseImg;
+
+	[SerializeField]
+	public List<Spritelist> StatesSprites;
+	private int CurrentSpriteSet = 0; 
+	private float timeWait;
+	private float overallHealthCache = 100;
+
+
+	private void OnEnable()
 	{
-		public int critStart;
-		private int currentSprite;
-		public int deathStart;
+		SceneManager.activeSceneChanged += OnSceneChange;
+		UpdateManager.Instance.Add(UpdateMe);
+	}
 
-		[Header("Start of sprite positions for anim")] public int fullHealthStart;
-		public int medDmgStart;
-		public int minorDmgStart;
-		public int mjrDmgStart;
-
-		//FIXME doing overlayCrit update based off heart monitor for time being
-		public OverlayCrits overlayCrits;
-
-		public Image pulseImg;
-		private Sprite[] sprites;
-
-		private int spriteStart;
-		private bool startMonitoring;
-		private float timeWait;
-
-		private void Start()
+	private void OnDisable()
+	{
+		SceneManager.activeSceneChanged -= OnSceneChange;
+		if (UpdateManager.Instance != null)
 		{
-			sprites = SpriteManager.ScreenUISprites["gen"];
-			if (SceneManager.GetActiveScene().name != "Lobby")
-			{
-				//Game has been started without the lobby scene
-				//so start the heart monitor manually
-				TryStartMonitor();
-			}
+			UpdateManager.Instance.Remove(UpdateMe);
 		}
+	}
 
-		private void OnEnable()
-		{
-			SceneManager.activeSceneChanged += OnSceneChange;
-		}
+	private void OnSceneChange(Scene prev, Scene next)
+	{
+		// Ensure crit overlay is reset to normal.
+		overlayCrits.SetState(OverlayState.normal);
+	}
 
-		private void OnDisable()
+	//Managed by UpdateManager
+	void UpdateMe()
+	{
+		if (PlayerManager.LocalPlayer != null && !PlayerManager.LocalPlayerScript.IsGhost)
 		{
-			SceneManager.activeSceneChanged -= OnSceneChange;
-		}
-
-		private void OnSceneChange(Scene prev, Scene next)
-		{
-			if (next.name != "Lobby")
+			CheckHealth();
+			timeWait += Time.deltaTime;
+			if (timeWait > 0.05f)
 			{
-				TryStartMonitor();
-			}
-			else
-			{
-				startMonitoring = false;
-			}
-		}
-
-		private void TryStartMonitor()
-		{
-			if (!startMonitoring)
-			{
-				spriteStart = fullHealthStart;
-				startMonitoring = true;
-				StartCoroutine(MonitorHealth());
-			}
-		}
-
-		private IEnumerator MonitorHealth()
-		{
-			currentSprite = 0; //28 length for monitor anim
-			while (startMonitoring)
-			{
-				while (PlayerManager.LocalPlayer == null)
+				if (currentSprite != 27) 
 				{
-					yield return new WaitForSeconds(1f);
+					pulseImg.sprite = StatesSprites[CurrentSpriteSet].SP[currentSprite];
+					currentSprite++;
+					timeWait = 0f;
 				}
-				pulseImg.sprite = sprites[spriteStart + currentSprite++];
-				while (currentSprite == 28)
+				else
 				{
-					yield return new WaitForSeconds(0.05f);
-					timeWait += Time.deltaTime;
-					if (timeWait >= 2f)
+					pulseImg.sprite = StatesSprites[CurrentSpriteSet].SP[currentSprite];
+					if (timeWait > 2f)
 					{
-						timeWait = 0f;
 						currentSprite = 0;
+						timeWait = 0f;
 					}
 				}
-
-				yield return new WaitForSeconds(0.05f);
 			}
+		}
+	}
 
-			yield return new WaitForEndOfFrame();
+	private void CheckHealth()
+	{
+		if (PlayerManager.LocalPlayerScript.playerHealth.OverallHealth == overallHealthCache)
+		{
+			return;
+		}
+		overallHealthCache = PlayerManager.LocalPlayerScript.playerHealth.OverallHealth;
+
+		if (overallHealthCache >= 100)
+		{
+			SoundManager.Stop("Critstate");
+			CurrentSpriteSet = 0;
+			pulseImg.sprite = StatesSprites[0].SP[currentSprite];
+			overlayCrits.SetState(OverlayState.normal);
+		}
+		if (overallHealthCache >= 70)
+		{
+			CurrentSpriteSet = 1;
+			SoundManager.Stop("Critstate");
+			pulseImg.sprite = StatesSprites[1].SP[currentSprite];
+			overlayCrits.SetState(OverlayState.normal);
+		}
+		if (overallHealthCache <= 70 &&
+			overallHealthCache > 50)
+		{
+			SoundManager.Stop("Critstate");
+			CurrentSpriteSet = 2;
+			pulseImg.sprite = StatesSprites[2].SP[currentSprite];
+			overlayCrits.SetState(OverlayState.injured);
+		}
+		if (overallHealthCache <= 50 &&
+			overallHealthCache > 30 )
+		{
+			SoundManager.Stop("Critstate");
+			CurrentSpriteSet = 3;
+			pulseImg.sprite = StatesSprites[3].SP[currentSprite];
+			overlayCrits.SetState(OverlayState.injured);
+		}
+		if (overallHealthCache <= 30 &&
+			overallHealthCache > 0 )
+		{
+			SoundManager.Stop("Critstate");
+			CurrentSpriteSet = 4;
+			pulseImg.sprite = StatesSprites[4].SP[currentSprite];
+			overlayCrits.SetState(OverlayState.injured);
+		}
+		if (overallHealthCache <= 0 &&
+		    overallHealthCache < 15)
+		{
+			SoundManager.Play("Critstate");
+			CurrentSpriteSet = 5;
+			pulseImg.sprite = StatesSprites[5].SP[currentSprite];
+			overlayCrits.SetState(OverlayState.unconscious);
 		}
 
-		public void DetermineDisplay(PlayerHealthUI pHealthUI, int curHealth)
+		if (overallHealthCache <= -15 &&
+			overallHealthCache > -100)
 		{
-			if (pHealthUI == null)
-			{
-				return;
-			}
-			if (curHealth <= -1 && spriteStart == deathStart)
-			{
-				return; //Ensure that messages are not spammed when there is no more health to go
-			}
-
-			CheckHealth(curHealth);
+			CurrentSpriteSet = 6;
+			pulseImg.sprite = StatesSprites[6].SP[currentSprite];
+			overlayCrits.SetState(OverlayState.crit);
 		}
 
-		private void CheckHealth(int cHealth)
+		if (overallHealthCache <= -100)
 		{
-			//PlayGroup.PlayerManager.PlayerScript.playerNetworkActions.CmdSendAlertMessage("mHealth: " + cHealth, true);
-			//Debug.Log("PlayerHealth: " + PlayGroup.PlayerManager.PlayerScript.playerHealth.Health);
-			if (cHealth >= 90
-			    && spriteStart != fullHealthStart)
-			{
-				SoundManager.Stop("Critstate");
-				spriteStart = fullHealthStart;
-				pulseImg.sprite = sprites[spriteStart];
-				overlayCrits.SetState(OverlayState.normal);
-			}
-			if (cHealth < 90
-			    && cHealth > 80
-			    && spriteStart != minorDmgStart)
-			{
-				SoundManager.Stop("Critstate");
-				spriteStart = minorDmgStart;
-				pulseImg.sprite = sprites[spriteStart];
-				overlayCrits.SetState(OverlayState.injured);
-			}
-			if (cHealth < 80
-			    && cHealth > 50
-			    && spriteStart != medDmgStart)
-			{
-				SoundManager.Stop("Critstate");
-				spriteStart = medDmgStart;
-				pulseImg.sprite = sprites[spriteStart];
-				overlayCrits.SetState(OverlayState.injured);
-			}
-			if (cHealth < 50
-			    && cHealth > 30
-			    && spriteStart != mjrDmgStart)
-			{
-				SoundManager.Stop("Critstate");
-				spriteStart = mjrDmgStart;
-				pulseImg.sprite = sprites[spriteStart];
-				overlayCrits.SetState(OverlayState.injured);
-			}
-			if (cHealth < 30
-			    && cHealth > 0
-			    && spriteStart != critStart)
-			{
-				SoundManager.Play("Critstate");
-				spriteStart = critStart;
-				pulseImg.sprite = sprites[spriteStart];
-				overlayCrits.SetState(OverlayState.unconscious);
-			}
-
-			if (cHealth < 15
-			    && cHealth > 0
-			    && overlayCrits.currentState != OverlayState.crit)
-			{
-				overlayCrits.SetState(OverlayState.crit);
-			}
-
-			if (cHealth <= 0
-			    && spriteStart != deathStart)
-			{
-				SoundManager.Stop("Critstate");
-				spriteStart = deathStart;
-				pulseImg.sprite = sprites[spriteStart];
-				overlayCrits.SetState(OverlayState.death);
-			}
+			SoundManager.Stop("Critstate");
+			CurrentSpriteSet = 7;
+			pulseImg.sprite = StatesSprites[7].SP[currentSprite];
+			overlayCrits.SetState(OverlayState.death);
 		}
 	}
 }

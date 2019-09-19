@@ -1,155 +1,196 @@
-﻿using PlayGroup;
-using UnityEngine;
+﻿using UnityEngine;
 
-namespace UI
+public class Hands : MonoBehaviour
 {
-	public class Hands : MonoBehaviour
+	public Transform selector;
+	public RectTransform selectorRect;
+	public Transform rightHand;
+	public Transform leftHand;
+	public UI_ItemSlot CurrentSlot { get; private set; }
+	public UI_ItemSlot OtherSlot { get; private set; }
+	public bool IsRight { get; private set; }
+	public bool hasSwitchedHands;
+
+	private InventorySlotCache Slots => UIManager.InventorySlots;
+
+	private void Start()
 	{
-		public Transform selector;
-		public UI_ItemSlot CurrentSlot { get; private set; }
-		public UI_ItemSlot OtherSlot { get; private set; }
-		public bool IsRight { get; private set; }
+		CurrentSlot = Slots[EquipSlot.rightHand];
+		OtherSlot = Slots[EquipSlot.leftHand];
+		IsRight = true;
+		hasSwitchedHands = false;
+	}
 
-		private InventorySlotCache Slots => UIManager.InventorySlots;
-
-		private void Start()
+	/// <summary>
+	/// Action to swap hands
+	/// </summary>
+	public void Swap()
+	{
+		if (isValidPlayer())
 		{
-			CurrentSlot = Slots.RightHandSlot;
-			OtherSlot = Slots.LeftHandSlot;
-			IsRight = true;
-		}
-
-		public void Swap()
-		{
-			if (PlayerManager.LocalPlayerScript != null)
-			{
-				if (!PlayerManager.LocalPlayerScript.playerMove.allowInput ||
-				    PlayerManager.LocalPlayerScript.playerMove.isGhost)
-				{
-					return;
-				}
-			}
-
 			SetHand(!IsRight);
 		}
+	}
 
-		public void SetHand(bool right)
+	/// <summary>
+	/// Sets the current active hand (true for right, false for left)
+	/// </summary>
+	public void SetHand(bool right)
+	{
+		if (isValidPlayer())
 		{
-			if (PlayerManager.LocalPlayerScript != null)
-			{
-				if (!PlayerManager.LocalPlayerScript.playerMove.allowInput ||
-				    PlayerManager.LocalPlayerScript.playerMove.isGhost)
-				{
-					return;
-				}
-			}
-
 			if (right)
 			{
-				CurrentSlot = Slots.RightHandSlot;
-				OtherSlot = Slots.LeftHandSlot;
-				PlayerManager.LocalPlayerScript.playerNetworkActions.CmdSetActiveHand("right");
+				if (CurrentSlot != Slots[EquipSlot.rightHand])
+				{
+					hasSwitchedHands = true;
+				}
+				CurrentSlot = Slots[EquipSlot.rightHand];
+				OtherSlot = Slots[EquipSlot.leftHand];
+				PlayerManager.LocalPlayerScript.playerNetworkActions.CmdSetActiveHand(EquipSlot.rightHand);
+				PlayerManager.LocalPlayerScript.playerNetworkActions.activeHand = EquipSlot.rightHand;
+				selector.SetParent(rightHand, false);
 			}
 			else
 			{
-				CurrentSlot = Slots.LeftHandSlot;
-				OtherSlot = Slots.RightHandSlot;
-				PlayerManager.LocalPlayerScript.playerNetworkActions.CmdSetActiveHand("left");
+				if (CurrentSlot != Slots[EquipSlot.leftHand])
+				{
+					hasSwitchedHands = true;
+				}
+				CurrentSlot = Slots[EquipSlot.leftHand];
+				OtherSlot = Slots[EquipSlot.rightHand];
+				PlayerManager.LocalPlayerScript.playerNetworkActions.CmdSetActiveHand(EquipSlot.leftHand);
+				PlayerManager.LocalPlayerScript.playerNetworkActions.activeHand = EquipSlot.leftHand;
+				selector.SetParent(leftHand, false);
 			}
 
 			IsRight = right;
-			selector.position = CurrentSlot.transform.position;
+			var pos = selectorRect.anchoredPosition;
+			pos.x = 0f;
+			selectorRect.anchoredPosition = pos;
+			selector.SetAsFirstSibling();
 		}
+	}
 
-		public void SwapItem(UI_ItemSlot itemSlot)
+	/// <summary>
+	/// Swap the item in the current slot to itemSlot
+	/// </summary>
+	public bool SwapItem(UI_ItemSlot itemSlot)
+	{
+		if (isValidPlayer())
 		{
-			if (PlayerManager.LocalPlayerScript != null)
-			{
-				if (!PlayerManager.LocalPlayerScript.playerMove.allowInput ||
-				    PlayerManager.LocalPlayerScript.playerMove.isGhost)
-				{
-					return;
-				}
-			}
-
 			if (CurrentSlot != itemSlot)
 			{
-				if (!CurrentSlot.IsFull)
+				var pna = PlayerManager.LocalPlayerScript.playerNetworkActions;
+
+				if (CurrentSlot.Item == null)
 				{
-					Swap(CurrentSlot, itemSlot);
+					if(itemSlot.Item != null)
+					{
+						if(itemSlot.inventorySlot.IsUISlot)
+						{
+							pna.CmdUpdateSlot(CurrentSlot.equipSlot, itemSlot.equipSlot);
+						}
+						else
+						{
+							StoreItemMessage.Send(itemSlot.inventorySlot.Owner, PlayerManager.LocalPlayerScript.gameObject, CurrentSlot.equipSlot, false, itemSlot.equipSlot);
+						}
+						return true;
+					}
 				}
 				else
 				{
-					Swap(itemSlot, CurrentSlot);
+					if(itemSlot.Item == null)
+					{
+						if (itemSlot.inventorySlot.IsUISlot)
+						{
+							pna.CmdUpdateSlot(itemSlot.equipSlot, CurrentSlot.equipSlot);
+						}
+						else
+						{
+							StoreItemMessage.Send(itemSlot.inventorySlot.Owner, PlayerManager.LocalPlayerScript.gameObject, CurrentSlot.equipSlot, true);
+						}
+						return true;
+					}
 				}
 			}
 		}
+		return false;
+	}
 
-		public void Use()
+	/// <summary>
+	/// General function to activate the item's UIInteract
+	/// This is the same as clicking the item with the same item's hand
+	/// </summary>
+	public void Activate()
+	{
+		// Is there an item in the active hand?
+		if (CurrentSlot.Item == null)
 		{
-			if (PlayerManager.LocalPlayerScript != null)
+			return;
+		}
+		CurrentSlot.TryItemInteract();
+	}
+
+	/// <summary>
+	/// General function to try to equip the item in the active hand
+	/// </summary>
+	public void Equip()
+	{
+		// Is the player allowed to interact? (not a ghost)
+		if(!isValidPlayer())
+		{
+			return;
+		}
+
+		// Is there an item to equip?
+		if(CurrentSlot.Item == null)
+		{
+			Logger.Log("!CurrentSlot.IsFull");
+			return;
+		}
+
+		//This checks which UI slot the item can be equiped to and swaps it there
+		UI_ItemSlot itemSlot = InventorySlotCache.GetSlotByItemType(CurrentSlot.Item);
+
+		if (itemSlot != null)
+		{
+			//Try to equip the item into the appropriate slot
+			if (!SwapItem(itemSlot))
 			{
-				if (!PlayerManager.LocalPlayerScript.playerMove.allowInput ||
-				    PlayerManager.LocalPlayerScript.playerMove.isGhost)
+				//If we couldn't equip the item into it's primary slot, try the pockets!
+				if(!SwapItem(InventorySlotCache.GetSlotByEvent(EquipSlot.storage01)))
 				{
-					return;
+					//We couldn't equip the item in pocket 1. Try pocket2!
+					//This swap fails if both pockets are full, do nothing if fail
+					SwapItem(InventorySlotCache.GetSlotByEvent(EquipSlot.storage02));
 				}
-			}
-
-			if (!CurrentSlot.IsFull)
-			{
-				return;
-			}
-
-			//Is the item edible?
-			if (CheckEdible())
-			{
-				return;
-			}
-
-			//This checks which UI slot the item can be equiped too and swaps it there
-			ItemType type = Slots.GetItemType(CurrentSlot.Item);
-			SpriteType masterType = Slots.GetItemMasterType(CurrentSlot.Item);
-
-			switch (masterType)
-			{
-				case SpriteType.Clothing:
-					UI_ItemSlot slot = Slots.GetSlotByItem(CurrentSlot.Item);
-					SwapItem(slot);
-					break;
-				case SpriteType.Items:
-					UI_ItemSlot itemSlot = Slots.GetSlotByItem(CurrentSlot.Item);
-					SwapItem(itemSlot);
-					break;
-				case SpriteType.Guns:
-					break;
 			}
 		}
 
-		//Check if the item is edible and eat it
-		private bool CheckEdible()
+		else
 		{
-			FoodBehaviour baseFood = CurrentSlot.Item.GetComponent<FoodBehaviour>();
-			if (baseFood != null)
-			{
-				baseFood.TryEat();
-				return true;
-			}
-			return false;
-		}
-
-		private void Swap(UI_ItemSlot slot1, UI_ItemSlot slot2)
-		{
-			if (PlayerManager.LocalPlayerScript != null)
-			{
-				if (!PlayerManager.LocalPlayerScript.playerMove.allowInput ||
-				    PlayerManager.LocalPlayerScript.playerMove.isGhost)
-				{
-					return;
-				}
-			}
-
-			UIManager.TryUpdateSlot(new UISlotObject(slot1.eventName, slot2.Item));
+			Logger.LogError("No slot type was found for this object for auto equip", Category.UI);
 		}
 	}
+
+	/// <summary>
+	/// Check if the player is allowed to interact with objects
+	/// </summary>
+	/// <returns>True if they can, false if they cannot</returns>
+	private bool isValidPlayer()
+	{
+		if (PlayerManager.LocalPlayerScript != null)
+		{
+			// TODO tidy up this if statement once it's working correctly
+			if (!PlayerManager.LocalPlayerScript.playerMove.allowInput ||
+				PlayerManager.LocalPlayerScript.IsGhost)
+			{
+				Logger.Log("Invalid player, cannot perform action!", Category.UI);
+				return false;
+			}
+		}
+		return true;
+	}
+
 }

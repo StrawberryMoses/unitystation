@@ -1,5 +1,4 @@
-﻿using Crafting;
-using UnityEngine;
+﻿using UnityEngine;
 using UnityEngine.Networking;
 
 public class Microwave : NetworkBehaviour
@@ -58,7 +57,7 @@ public class Microwave : NetworkBehaviour
 		if (isServer)
 		{
 			GameObject mealPrefab = CraftingManager.Meals.FindOutputMeal(meal);
-			ItemFactory.Instance.SpawnMeal(mealPrefab, transform.position, transform.parent);
+			PoolManager.PoolNetworkInstantiate(mealPrefab, transform.position, transform.parent);
 		}
 		meal = null;
 	}

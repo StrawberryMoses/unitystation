@@ -1,5 +1,4 @@
 ﻿using System.Collections;
-using UI;
 using UnityEngine;
 using UnityEngine.Networking;
 
@@ -9,59 +8,35 @@ using UnityEngine.Networking;
 public class UpdateSlotMessage : ServerMessage
 {
 	public static short MessageType = (short) MessageTypes.UpdateSlotMessage;
-	public bool ForceRefresh;
-	public NetworkInstanceId ObjectForSlot;
+	public NetworkInstanceId Item;
 	public NetworkInstanceId Recipient;
-	public string Slot;
+	public EquipSlot equipSlot;
+	public bool RemoveItem;
 
 	public override IEnumerator Process()
 	{
-		//To be run on client
-		//        Debug.Log("Processed " + ToString());
-
-		if (ObjectForSlot == NetworkInstanceId.Invalid)
+		if (RemoveItem)
 		{
-			//Clear slot message
-			yield return WaitFor(Recipient);
-			if (CustomNetworkManager.Instance._isServer || ForceRefresh)
-			{
-				UIManager.UpdateSlot(new UISlotObject(Slot));
-			}
+			yield return WaitFor(Recipient, Item);
+			InventoryManager.ClientClearInvSlot(NetworkObjects[0].GetComponent<PlayerNetworkActions>(), equipSlot);
 		}
 		else
 		{
-			yield return WaitFor(Recipient, ObjectForSlot);
-			if (CustomNetworkManager.Instance._isServer || ForceRefresh)
-			{
-				UIManager.UpdateSlot(new UISlotObject(Slot, NetworkObjects[1]));
-			}
+			yield return WaitFor(Recipient, Item);
+			InventoryManager.ClientEquipInInvSlot(NetworkObjects[0].GetComponent<PlayerNetworkActions>(), NetworkObjects[1], equipSlot);
 		}
 	}
 
-	/// <param name="recipient">Client GO</param>
-	/// <param name="slot"></param>
-	/// <param name="objectForSlot">Pass null to clear slot</param>
-	/// <param name="forced">
-	///     Used for client simulation, use false if client's slot is already updated by prediction
-	///     (to avoid updating it twice)
-	/// </param>
-	/// <returns></returns>
-	public static UpdateSlotMessage Send(GameObject recipient, string slot, GameObject objectForSlot = null, bool forced = true)
+	public static UpdateSlotMessage Send(GameObject recipient, GameObject item, bool removeItem, EquipSlot sentEquipSlot = 0)
 	{
 		UpdateSlotMessage msg = new UpdateSlotMessage
 		{
-			Recipient = recipient.GetComponent<NetworkIdentity>().netId, //?
-			Slot = slot,
-			ObjectForSlot = objectForSlot != null ? objectForSlot.GetComponent<NetworkIdentity>().netId : NetworkInstanceId.Invalid,
-			ForceRefresh = forced
+			Recipient = recipient.GetComponent<NetworkIdentity>().netId,
+			Item = item.GetComponent<NetworkIdentity>().netId,
+			RemoveItem = removeItem,
+			equipSlot = sentEquipSlot
 		};
 		msg.SendTo(recipient);
 		return msg;
-	}
-
-	public override string ToString()
-	{
-		return string.Format("[UpdateSlotMessage Recipient={0} Method={2} Parameter={3} Type={1} Forced={4}]", Recipient, MessageType, Slot, ObjectForSlot,
-			ForceRefresh);
 	}
 }

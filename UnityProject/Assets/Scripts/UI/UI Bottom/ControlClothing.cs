@@ -1,16 +1,23 @@
 ﻿using UnityEngine;
 using UnityEngine.UI;
+using UnityEngine.EventSystems;
 
-namespace UI
-{
-	public class ControlClothing : MonoBehaviour
+
+	public class ControlClothing : TooltipMonoBehaviour
 	{
-		public Image[] equipImgs;
+		public GameObject retractableGroup;
+		private Image[] equipImgs = new Image[0];
+		public GameObject hideOnRetract;
 		private bool isOpen;
+		public override string Tooltip => "toggle";
 
 		private void Start()
 		{
 			isOpen = false;
+			if ( retractableGroup )
+			{
+				equipImgs = retractableGroup.GetComponentsInChildren<Image>();
+			}
 			ToggleEquipMenu(false);
 		}
 
@@ -53,6 +60,9 @@ namespace UI
 					equipImgs[i].raycastTarget = false;
 				}
 			}
+			if ( hideOnRetract != null )
+			{
+				hideOnRetract.SetActive( !isOn && UIManager.UseGamePad );
+			}
 		}
 	}
-}

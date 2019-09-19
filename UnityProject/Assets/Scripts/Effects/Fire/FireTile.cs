@@ -1,5 +1,4 @@
-﻿using Sprites;
-using UnityEngine;
+﻿using UnityEngine;
 
 public class FireTile : MonoBehaviour
 {
@@ -62,6 +61,6 @@ public class FireTile : MonoBehaviour
 		//		if (fT != null) {
 		//			fT.AddFireScorch();
 		//		}
-		PoolManager.Instance.PoolClientDestroy(gameObject);
+		PoolManager.PoolClientDestroy(gameObject);
 	}
 }

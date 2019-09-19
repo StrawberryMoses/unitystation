@@ -1,8 +1,4 @@
 ﻿using System.Collections;
-using PlayGroup;
-using UI;
-using UnityEngine;
-using UnityEngine.Networking;
 
 /// <summary>
 ///     Message that tells client to update thier job lists
@@ -17,11 +13,11 @@ public class ForceJobListUpdateMessage : ServerMessage
 		GUI_PlayerJobs playerJobs = UIManager.Instance.displayControl.jobSelectWindow.GetComponent<GUI_PlayerJobs>();
 		playerJobs.isUpToDate = false;
 
-		if (!GameData.IsHeadlessServer && PlayerManager.LocalPlayerScript.JobType == JobType.NULL)
+		if (!GameData.IsHeadlessServer && PlayerManager.LocalPlayerScript.mind.jobType == JobType.NULL)
 		{
 			//Reset required if player played in previous round
 			playerJobs.hasPickedAJob = false;
-			Debug.Log("has picked job reset");
+			Logger.Log("has picked job reset",Category.Jobs);
 		}
 
 		yield return null;

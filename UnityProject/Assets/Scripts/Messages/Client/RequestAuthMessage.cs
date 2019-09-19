@@ -1,7 +1,5 @@
 ﻿using System.Collections;
-using UnityEngine;
 using UnityEngine.Networking;
-using PlayGroup;
 using Facepunch.Steamworks;
 
 
@@ -13,57 +11,56 @@ public class RequestAuthMessage : ClientMessage
 
 	public override IEnumerator Process()
 	{
-		//	Debug.Log("Processed " + ToString());
-		yield return WaitFor(SentBy);
+		//	Logger.Log("Processed " + ToString());
+//		yield return WaitFor(SentBy);
 
 //		if ( !Managers.instance.isForRelease )
 //		{
-//			Debug.Log($"Ignoring {this}, not for release");
+//			Logger.Log($"Ignoring {this}, not for release");
 //			yield break;
 //		}
-		
-		var connectedPlayer = PlayerList.Instance.Get( NetworkObject );
 
-		if ( PlayerList.IsConnWhitelisted(connectedPlayer) )
+		if ( PlayerList.IsConnWhitelisted(SentByPlayer) )
 		{
-			Debug.Log( $"Player whitelisted: {connectedPlayer}" );
+			Logger.Log( $"Player whitelisted: {SentByPlayer}", Category.Steam);
 			yield break;
 		}
-		if ( connectedPlayer.SteamId != 0 )
+		if ( SentByPlayer.SteamId != 0 )
 		{
-			Debug.Log( $"Player already authenticated: {connectedPlayer}" );
+			Logger.Log( $"Player already authenticated: {SentByPlayer}", Category.Steam );
 			yield break;
 		}
-		
-//		Debug.Log("Server Starting Auth for User:" + SteamID);
+
+		Logger.Log("Server Starting Auth for User: " + SteamID, Category.Steam);
 		if (Server.Instance != null && SteamID != 0 && TicketBinary != null)
 		{
-			
+
 			//This results in a callback in CustomNetworkManager
 			if (!Server.Instance.Auth.StartSession(TicketBinary, SteamID))
 			{
 				// This can trigger for a lot of reasons
 				// More info: http://projectzomboid.com/modding//net/puppygames/steam/BeginAuthSessionResult.html
 				// if triggered does prevent the authchange callback.
-//				Debug.Log("Start Session returned false, kicking");
-				CustomNetworkManager.Kick( connectedPlayer, "Steam auth failed" );
+				Logger.Log("Start Session returned false, kicking", Category.Steam);
+				CustomNetworkManager.Kick( SentByPlayer, "Steam auth failed" );
 			}
 			else
 			{
-				connectedPlayer.SteamId = SteamID;
+				SentByPlayer.SteamId = SteamID;
+				Logger.Log("Callback in CustomNetworkManager for: " + SteamID, Category.Steam);
 			}
 		}
 
 	}
-	
+
 	public static RequestAuthMessage Send(ulong steamid, byte[] ticketBinary)
 	{
 		RequestAuthMessage msg = new RequestAuthMessage
 		{
 			SteamID = steamid,
-			TicketBinary = ticketBinary			
+			TicketBinary = ticketBinary
 		};
-		
+
 		msg.Send();
 		return msg;
 	}
@@ -71,7 +68,7 @@ public class RequestAuthMessage : ClientMessage
 
 	public override string ToString()
 	{
-		return $"[RequestAuthMessage SteamID={SteamID} TicketBinary={TicketBinary} Type={MessageType} SentBy={SentBy}]";
+		return $"[RequestAuthMessage SteamID={SteamID} TicketBinary={TicketBinary} Type={MessageType} SentBy={SentByPlayer}]";
 	}
 
 	public override void Deserialize(NetworkReader reader)

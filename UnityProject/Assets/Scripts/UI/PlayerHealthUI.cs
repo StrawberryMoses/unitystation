@@ -1,62 +1,196 @@
-﻿using UnityEngine;
+﻿using System.Collections.Generic;
+using UnityEngine;
+using UnityEngine.SceneManagement;
 using UnityEngine.UI;
 
-namespace UI
+public class PlayerHealthUI : MonoBehaviour
 {
-	public class PlayerHealthUI : MonoBehaviour
+	public GameObject toxinAlert;
+	public GameObject heatAlert;
+	public GameObject coldAlert;
+	public UI_PressureAlert pressureAlert;
+	public GameObject oxygenAlert;
+	public UI_TemperatureAlert temperatureAlert;
+	public GameObject hungerAlert;
+	public Button oxygenButton;
+	public UI_HeartMonitor heartMonitor;
+	public List<DamageMonitorListener> bodyPartListeners = new List<DamageMonitorListener>();
+	public GameObject baseBody;
+
+	public bool humanUI;
+
+	void Awake()
 	{
-		public UI_HeartMonitor heartMonitor;
-		public OverlayCrits overlayCrits;
+		DisableAll();
+	}
 
-		//Server calls to update the UI
+	private void OnEnable()
+	{
+		UpdateManager.Instance.Add(UpdateMe);
+	}
 
-		public void UpdateHealthUI(UpdateUIMessage validateMsg, int curHealth)
+	private void OnDisable()
+	{
+		if (UpdateManager.Instance != null)
 		{
-			if (validateMsg == null) //can only be called from server msg
+			UpdateManager.Instance.Remove(UpdateMe);
+		}
+	}
+
+	private void DisableAll()
+	{
+		Transform[] childrenList = GetComponentsInChildren<Transform>(true);
+		for (int i = 0; i < childrenList.Length; i++)
+		{
+			var children = childrenList[i].gameObject;
+			if(children == gameObject)
 			{
-				return;
+				continue;
 			}
-
-			DetermineUIDisplay(curHealth);
+			children.SetActive(false);
 		}
+		humanUI = false;
+	}
 
-		private void DetermineUIDisplay(int curHealth)
+	private void EnableAlwaysVisible()
+	{
+		oxygenButton.gameObject.SetActive(true);
+		heartMonitor.gameObject.SetActive(true);
+		for (int i = 0; i < bodyPartListeners.Count; i++)
 		{
-			heartMonitor.DetermineDisplay(this,
-				curHealth); //For the heart monitor anim (atm just working off maxHealth)
-			//TODO do any other updates required in here
+			bodyPartListeners[i].gameObject.SetActive(true);
 		}
+		baseBody.SetActive(true);
+		humanUI = true;
+	}
 
-		/// placeholder based on old code
-		public void SetBodyTypeOverlay(BodyPartBehaviour bodyPart)
+	void SetSpecificVisibility(bool value, GameObject UIelement)
+	{
+		if(UIelement.activeInHierarchy != value)
 		{
-			foreach (DamageMonitorListener listener in
-				UIManager.Instance.GetComponentsInChildren<DamageMonitorListener>())
+			UIelement.SetActive(value);
+		}
+	}
+
+	void UpdateMe()
+	{
+		if (PlayerManager.LocalPlayer == null)
+		{
+			return;
+		}
+		if (PlayerManager.LocalPlayerScript.IsGhost)
+		{
+			if(humanUI)
 			{
-				if (listener.bodyPartType != bodyPart.Type)
-				{
-					continue;
-				}
-				Sprite sprite;
-				switch (bodyPart.Severity)
-				{
-					case DamageSeverity.None:
-						sprite = bodyPart.GreenDamageMonitorIcon;
-						break;
-					case DamageSeverity.Moderate:
-						sprite = bodyPart.YellowDamageMonitorIcon;
-						break;
-					case DamageSeverity.Bad:
-						sprite = bodyPart.OrangeDamageMonitorIcon;
-						break;
-					case DamageSeverity.Critical:
-						sprite = bodyPart.RedDamageMonitorIcon;
-						break;
-					default:
-						sprite = bodyPart.GrayDamageMonitorIcon;
-						break;
-				}
-				listener.GetComponent<Image>().sprite = sprite;
+				DisableAll();
+			}
+			return;
+		}
+		if(!PlayerManager.LocalPlayerScript.IsGhost && !humanUI)
+		{
+			EnableAlwaysVisible();
+		}
+
+		float temperature = PlayerManager.LocalPlayerScript.playerHealth.respiratorySystem.temperature;
+		float pressure = PlayerManager.LocalPlayerScript.playerHealth.respiratorySystem.pressure;
+
+		if(temperature < 110)
+		{
+			SetSpecificVisibility(true, coldAlert);
+		}
+		else
+		{
+			SetSpecificVisibility(false, coldAlert);
+		}
+
+		if (temperature > 510)
+		{
+			SetSpecificVisibility(true, heatAlert);
+		}
+		else
+		{
+			SetSpecificVisibility(false, heatAlert);
+		}
+
+
+		if(temperature > 260 && temperature < 360)
+		{
+			SetSpecificVisibility(false, temperatureAlert.gameObject);
+		}
+		else
+		{
+			SetSpecificVisibility(true, temperatureAlert.gameObject);
+			temperatureAlert.SetTemperatureSprite(temperature);
+		}
+
+		if (pressure > 50 && pressure < 325)
+		{
+			SetSpecificVisibility(false, pressureAlert.gameObject);
+		}
+		else
+		{
+			SetSpecificVisibility(true, pressureAlert.gameObject);
+			pressureAlert.SetPressureSprite(pressure);
+		}
+
+		SetSpecificVisibility(PlayerManager.LocalPlayerScript.playerHealth.respiratorySystem.IsSuffocating, oxygenAlert);
+
+		SetSpecificVisibility(false, toxinAlert);
+		SetSpecificVisibility(false, hungerAlert);
+
+		if (PlayerManager.Equipment.HasInternalsEquipped() && !oxygenButton.IsInteractable())
+		{
+			oxygenButton.interactable = true;
+		}
+
+		if (!PlayerManager.Equipment.HasInternalsEquipped() && oxygenButton.IsInteractable())
+		{
+			EventManager.Broadcast(EVENT.DisableInternals);
+			oxygenButton.interactable = false;
+		}
+	}
+
+	/// <summary>
+	/// Update the PlayerHealth body part hud icon
+	/// </summary>
+	/// <param name="bodyPart"> Body part that requires updating </param>
+	public void SetBodyTypeOverlay(BodyPartBehaviour bodyPart)
+	{
+		for (int i = 0; i < bodyPartListeners.Count; i++)
+		{
+			if (bodyPartListeners[i].bodyPartType != bodyPart.Type)
+			{
+				continue;
+			}
+			Sprite sprite;
+			switch (bodyPart.Severity)
+			{
+				case DamageSeverity.None:
+					sprite = bodyPart.BlueDamageMonitorIcon;
+					break;
+				case DamageSeverity.Light:
+					sprite = bodyPart.GreenDamageMonitorIcon;
+					break;
+				case DamageSeverity.LightModerate:
+					sprite = bodyPart.YellowDamageMonitorIcon;
+					break;
+				case DamageSeverity.Moderate:
+					sprite = bodyPart.OrangeDamageMonitorIcon;
+					break;
+				case DamageSeverity.Bad:
+					sprite = bodyPart.DarkOrangeDamageMonitorIcon;
+					break;
+				case DamageSeverity.Critical:
+					sprite = bodyPart.RedDamageMonitorIcon;
+					break;
+				case DamageSeverity.Max:
+				default:
+					sprite = bodyPart.GrayDamageMonitorIcon;
+					break;
+			}
+			if (sprite != null && bodyPartListeners[i] != null && bodyPartListeners[i].image != null)
+			{
+				bodyPartListeners[i].image.sprite = sprite;
 			}
 		}
 	}

@@ -5,6 +5,10 @@ public class ObjectManager : MonoBehaviour
 {
 	private static ObjectManager objectManager;
 
+	public GameObject ClothPrefab;
+
+
+
 	[Header("How many prefabs to preload")] public int preLoadClothAmount = 15;
 
 	public static ObjectManager Instance
@@ -31,28 +35,22 @@ public class ObjectManager : MonoBehaviour
 			return;
 		}
 
-		clothFactory = pM.GetComponent<ClothFactory>();
 
 		//Preload to save on Instantiation during gameplay
-		ClothFactory.Instance.PreLoadCloth(Instance.preLoadClothAmount);
+		Instance.preLoadClothAmount = 0;
+
 	}
 }
 
 public enum ItemSize
 {
 	//w_class
-	Tiny,
-	Small,
-	Medium, //Normal
-	Large, //Bulky
-	Huge
+	Tiny = 	1,
+	Small = 2,
+	Medium =3, //Normal
+	Large = 4, //Bulky
+	Huge = 	5
 }
-
-//	public enum W_CLASS { //w_class
-//		WEIGHT_CLASS_TINY, WEIGHT_CLASS_SMALL, 
-//		WEIGHT_CLASS_NORMAL, WEIGHT_CLASS_BULKY, 
-//		WEIGHT_CLASS_HUGE
-//	}
 
 public enum SLOT_FLAGS
 {
@@ -116,8 +114,8 @@ public enum FLAGS_COVER
 
 public enum FLAGS
 {
-//flags 
-	//visor_flags 
+//flags
+	//visor_flags
 	CONDUCT,
 	ABSTRACT,
 	NODROP,
@@ -130,18 +128,6 @@ public enum FLAGS
 	SS_NO_FIRE,
 	SS_NO_INIT,
 	SS_BACKGROUND
-}
-
-
-public enum BODYPARTS
-{
-//body_parts_covered
-	CHEST,
-	GROIN,
-	LEGS,
-	FEET,
-	ARMS,
-	HANDS
 }
 
 public enum SpriteType
@@ -169,6 +155,7 @@ public enum ItemType
 	ID,
 	PDA,
 	Food,
+	Medical,
 	Knife,
 	Gun
 }

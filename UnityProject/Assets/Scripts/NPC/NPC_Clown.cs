@@ -1,12 +1,11 @@
 ﻿using System.Collections;
 using UnityEngine;
 
-namespace NPC
-{
+
 	public class NPC_Clown : MonoBehaviour
 	{
 		public Sprite[] clownSprites;
-		private bool isMoving;
+		private Coroutine coRandMove;
 
 		private bool isRight;
 		private SpriteRenderer spriteRenderer;
@@ -24,23 +23,23 @@ namespace NPC
 
 		private void OnDisable()
 		{
-			StopCoroutine(RandMove());
+			if (coRandMove != null) {
+				StopCoroutine(coRandMove);
+				coRandMove = null;
+			}
 		}
 
 		private void Update()
 		{
-			if (!isMoving)
-			{
-				StartCoroutine(RandMove());
-			}
+			if (coRandMove == null)
+				coRandMove = StartCoroutine(RandMove());
 		}
 
 		private IEnumerator RandMove()
 		{
-			isMoving = true;
 			float ranTime = Random.Range(0.2f, 6f);
 
-			yield return new WaitForSeconds(ranTime);
+			yield return WaitFor.Seconds(ranTime);
 
 			int ranDir = Random.Range(0, 4);
 
@@ -87,8 +86,6 @@ namespace NPC
 
 			float ranPitch = Random.Range(0.5f, 1.5f);
 			SoundManager.Play("ClownHonk", 0.3f, ranPitch);
-
-			isMoving = false;
 		}
 
 		private void Flip()
@@ -98,4 +95,3 @@ namespace NPC
 			transform.localScale = newScale;
 		}
 	}
-}

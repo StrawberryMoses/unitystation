@@ -1,31 +1,21 @@
 ﻿using System.Collections.Generic;
-using Crafting;
-using Items;
-using PlayGroup;
 using UnityEditor;
 using UnityEngine;
+using UnityEngine.Networking;
 
 public class Networking : Editor
 {
-	[MenuItem("Networking/Pickup Random Item (Client)")]
-	private static void PickupRandomItem()
-	{
-		PickUpTrigger[] items = FindObjectsOfType<PickUpTrigger>();
-		GameObject gameObject = items[Random.Range(1, items.Length)].gameObject;
-		InteractMessage.Send(gameObject, "id");
-	}
-
 	[MenuItem("Networking/Give Random Item To All (Server)")]
 	private static void GiveItems()
 	{
 		PlayerNetworkActions[] players = FindObjectsOfType<PlayerNetworkActions>();
-		PickUpTrigger[] items = FindObjectsOfType<PickUpTrigger>();
+		Pickupable[] items = FindObjectsOfType<Pickupable>();
 
 		//		var gameObject = items[Random.Range(1, items.Length)].gameObject;
 		for (int i = 0; i < players.Length; i++)
 		{
 			GameObject gameObject = items[Random.Range(1, items.Length)].gameObject;
-			players[i].AddItem(gameObject, "leftHand", true);
+			players[i].AddItemToUISlot(gameObject, EquipSlot.leftHand);
 		}
 	}
 	[MenuItem("Networking/Push everyone up")]
@@ -33,19 +23,19 @@ public class Networking : Editor
 	{
 		foreach (ConnectedPlayer player in PlayerList.Instance.InGamePlayers)
 		{
-			player.GameObject.GetComponent<PlayerScript>().playerSync.Push(Vector2Int.up);
+			player.GameObject.GetComponent<PlayerScript>().PlayerSync.Push(Vector2Int.up);
 		}
 	}
 	[MenuItem("Networking/Spawn some meat")]
 	private static void SpawnMeat()
 	{
 		foreach (ConnectedPlayer player in PlayerList.Instance.InGamePlayers) {
-			Vector3 playerPos = player.GameObject.GetComponent<PlayerScript>().playerSync.ServerState.WorldPosition;
+			Vector3 playerPos = player.GameObject.GetComponent<PlayerScript>().PlayerSync.ServerState.WorldPosition;
 			Vector3 spawnPos = playerPos + new Vector3( 0, 2, 0 );
 			GameObject mealPrefab = CraftingManager.Meals.FindOutputMeal("Meat Steak");
 			var slabs = new List<CustomNetTransform>();
 			for ( int i = 0; i < 5; i++ ) {
-				slabs.Add( ItemFactory.Instance.SpawnMeal(mealPrefab, spawnPos, null).GetComponent<CustomNetTransform>() );
+				slabs.Add( PoolManager.PoolNetworkInstantiate(mealPrefab, spawnPos).GetComponent<CustomNetTransform>() );
 			}
 			for ( var i = 0; i < slabs.Count; i++ ) {
 				Vector3 vector3 = i%2 == 0 ? new Vector3(i,-i,0) : new Vector3(-i,i,0);
@@ -58,18 +48,16 @@ public class Networking : Editor
 	{
 		//For every player in the connected player list (this list is serverside-only)
 		foreach (ConnectedPlayer player in PlayerList.Instance.InGamePlayers) {
-			
-			//Get PlayerScript component that holds references for the other important player-related scripts
-			var playerScript = player.GameObject.GetComponent<PlayerScript>();
-			
-			//Digging into PlayerSync component, grabbing ServerState and taking out current position
-			Vector3 position = playerScript.playerSync.ServerState.Position;
-			
 			//Printing this the pretty way, example:
 			//Bob (CAPTAIN) is located at (77,0, 52,0, 0,0)
-			Debug.Log( $"{player.Name} ({player.Job}) is located at {position}" );
+			Logger.LogFormat( "{0} ({1)} is located at {2}.", Category.Server, player.Name, player.Job, player.Script.WorldPos );
 		}
 
+	}
+
+	[MenuItem("Networking/Spawn dummy player")]
+	private static void SpawnDummyPlayer() {
+		SpawnHandler.SpawnDummyPlayer( JobType.ASSISTANT );
 	}
 
 	[MenuItem("Networking/Transform Waltz (Server)")]
@@ -92,5 +80,23 @@ public class Networking : Editor
 	private static void ExtendRoundTime()
 	{
 		GameManager.Instance.ResetRoundTime();
+	}
+
+	[MenuItem("Networking/Kill local player (Server only)")]
+	private static void KillLocalPlayer()
+	{
+		if (CustomNetworkManager.Instance._isServer)
+		{
+			PlayerManager.LocalPlayerScript.playerHealth.ApplyDamage(null, 99999f, AttackType.Internal, DamageType.Brute);
+		}
+	}
+
+	[MenuItem("Networking/Respawn local player (Server only)")]
+	private static void RespawnLocalPlayer()
+	{
+		if (CustomNetworkManager.Instance._isServer)
+		{
+			PlayerManager.LocalPlayerScript.playerNetworkActions.CmdRespawnPlayer();
+		}
 	}
 }

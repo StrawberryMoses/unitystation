@@ -2,8 +2,7 @@
 using System.Collections.Generic;
 using UnityEngine;
 
-namespace Crafting
-{
+
 	[Serializable]
 	public class CraftingDatabase
 	{
@@ -15,7 +14,7 @@ namespace Crafting
 			{
 				if (recipe.Check(ingredients))
 				{
-					return recipe.output;
+					return recipe.Output;
 				}
 			}
 			return null;
@@ -25,12 +24,11 @@ namespace Crafting
 		{
 			foreach (Recipe recipe in recipeList)
 			{
-				if (recipe.output.name == mealName)
+				if (recipe.Output.name == mealName)
 				{
-					return recipe.output;
+					return recipe.Output;
 				}
 			}
 			return null;
 		}
 	}
-}

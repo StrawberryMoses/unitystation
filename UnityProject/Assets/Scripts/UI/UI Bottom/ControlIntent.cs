@@ -1,48 +1,67 @@
 ﻿using UnityEngine;
 using UnityEngine.UI;
+using UnityEngine.EventSystems;
 
-namespace UI
-{
 	public enum Intent
 	{
 		Help,
 		Disarm,
-		Hold,
-		Attack
+		Grab,
+		Harm
 	}
 
-	public class ControlIntent : MonoBehaviour
+	public class ControlIntent : TooltipMonoBehaviour
 	{
 		public Sprite[] sprites;
 		private Image thisImg;
+		public override string Tooltip => "intent";
 
 		private void Start()
 		{
-			UIManager.CurrentIntent = Intent.Help;
 			thisImg = GetComponent<Image>();
+			SetIntent(Intent.Help);
 		}
 
 		//OnClick method
-		public void IntentButton()
+		//The selected intent can be passed from a button in the UI
+		public void IntentButton(int selectedIntent)
 		{
-			Debug.Log("Intent Button");
+			Logger.Log("Intent Button", Category.UI);
 
 			SoundManager.Play("Click01");
 
+			UIManager.CurrentIntent = (Intent) selectedIntent;
+
+			thisImg.sprite = sprites[selectedIntent];
+		}
+
+		public void CycleIntent(bool cycleLeft = true)
+		{
+			Logger.Log("Intent cycling " + (cycleLeft ? "left" : "right"), Category.UI);
+			SoundManager.Play("Click01");
+
 			int intent = (int) UIManager.CurrentIntent;
-			intent = (intent + 1) % 4;
+			intent += (cycleLeft ? 1 : -1);
+
+			// Assuming we never add more than 4 intents
+			if (intent == -1)
+			{
+				intent = 3;
+			}
+			else if (intent == 4)
+			{
+				intent = 0;
+			}
 
 			UIManager.CurrentIntent = (Intent) intent;
-
 			thisImg.sprite = sprites[intent];
 		}
 
-        //Hotkey method
-        public void IntentHotkey(int intent)
-        {
-            UIManager.CurrentIntent = (Intent) intent;
+		//Hotkey method
+		public void SetIntent(Intent intent)
+		{
+			UIManager.CurrentIntent = intent;
 
-            thisImg.sprite = sprites[intent];
-        }
+			thisImg.sprite = sprites[(int)intent];
+		}
 	}
-}

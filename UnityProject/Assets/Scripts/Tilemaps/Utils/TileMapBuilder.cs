@@ -1,18 +1,15 @@
-﻿using Tilemaps.Behaviours.Layers;
-using Tilemaps.Tiles;
-using UnityEngine;
+﻿using UnityEngine;
 
-namespace Tilemaps.Utils
-{
+
 	public class TileMapBuilder
 	{
-		private readonly bool _importMode;
-		private readonly MetaTileMap _metaTileMap;
+		private readonly bool importMode;
+		private readonly MetaTileMap metaTileMap;
 
 		public TileMapBuilder(MetaTileMap tilemap, bool importMode = false)
 		{
-			_metaTileMap = tilemap;
-			_importMode = importMode;
+			metaTileMap = tilemap;
+			this.importMode = importMode;
 		}
 
 		public void PlaceTile(Vector3Int position, GenericTile tile)
@@ -42,9 +39,9 @@ namespace Tilemaps.Utils
 
 		private void PlaceLayerTile(Vector3Int position, LayerTile tile, Matrix4x4 matrixTransform)
 		{
-			if (!_importMode)
+			if (!importMode)
 			{
-				_metaTileMap.RemoveTile(position, tile.LayerType);
+				metaTileMap.RemoveTile(position, tile.LayerType);
 			}
 			SetTile(position, tile, matrixTransform);
 		}
@@ -56,7 +53,6 @@ namespace Tilemaps.Utils
 				SetTile(position, requiredTile, matrixTransform);
 			}
 
-			_metaTileMap.SetTile(position, tile, matrixTransform);
+			metaTileMap.SetTile(position, tile, matrixTransform);
 		}
 	}
-}

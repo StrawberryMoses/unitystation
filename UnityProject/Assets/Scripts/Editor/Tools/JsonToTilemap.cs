@@ -1,15 +1,11 @@
 ﻿using System;
 using System.Collections.Generic;
 using System.IO;
-using FullSerializer;
-using Tilemaps.Behaviours.Layers;
-using Tilemaps.Tiles;
-using Tilemaps.Utils;
+using Newtonsoft.Json;
 using UnityEditor;
 using UnityEditor.SceneManagement;
 using UnityEngine;
 using UnityEngine.SceneManagement;
-using UnityStation.Tools;
 
 public class JsonToTilemap : Editor
 {
@@ -65,22 +61,22 @@ public class JsonToTilemap : Editor
 
 		// mark as dirty, otherwise the scene can't be saved.
 		EditorSceneManager.MarkSceneDirty(SceneManager.GetActiveScene());
-		Debug.Log("Import kinda finished");
+		Logger.Log("Import kinda finished", Category.TileMaps);
 	}
 
 	private static Matrix4x4 FindObjectPosition(MetaTileMap metaTileMap, ref Vector3Int position, LayerTile tile)
 	{
-		bool onStructure = metaTileMap.HasTile(position, LayerType.Walls) ||
-		                   metaTileMap.HasTile(position, LayerType.Windows);
+		bool onStructure = metaTileMap.HasTile(position, LayerType.Walls, true) ||
+		                   metaTileMap.HasTile(position, LayerType.Windows, true);
 
 		Quaternion rotation = Quaternion.identity;
 
 		for (int i = 0; i < 4; i++)
 		{
 			Vector3Int offset = Vector3Int.RoundToInt(rotation * Vector3.up);
-			bool hasStructure = metaTileMap.HasTile(position + offset, LayerType.Walls) ||
-			                    metaTileMap.HasTile(position, LayerType.Windows);
-			bool isOccupied = metaTileMap.HasTile(position + offset, onStructure ? LayerType.Base : LayerType.Objects);
+			bool hasStructure = metaTileMap.HasTile(position + offset, LayerType.Walls, true) ||
+			                    metaTileMap.HasTile(position, LayerType.Windows, true);
+			bool isOccupied = metaTileMap.HasTile(position + offset, onStructure ? LayerType.Base : LayerType.Objects, true);
 
 			if (onStructure != hasStructure && isOccupied == onStructure)
 			{
@@ -100,13 +96,10 @@ public class JsonToTilemap : Editor
 
 	private static Dictionary<string, TilemapLayer> DeserializeJson()
 	{
-		Dictionary<string, TilemapLayer> deserializedLayers = new Dictionary<string, TilemapLayer>();
+		Dictionary<string, TilemapLayer> deserializedLayers;
 		TextAsset asset = Resources.Load(Path.Combine("metadata", SceneManager.GetActiveScene().name)) as TextAsset;
-		if (asset != null)
-		{
-			fsData data = fsJsonParser.Parse(asset.text);
-			fsSerializer serializer = new fsSerializer();
-			serializer.TryDeserialize(data, ref deserializedLayers).AssertSuccessWithoutWarnings();
+		if (asset != null) {
+			deserializedLayers = JsonConvert.DeserializeObject<Dictionary<string, TilemapLayer>>( asset.text );
 		}
 		else
 		{

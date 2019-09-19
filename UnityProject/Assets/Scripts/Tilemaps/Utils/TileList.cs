@@ -1,17 +1,27 @@
 ﻿using System.Collections.Generic;
 using System.Linq;
-using Tilemaps.Behaviours.Meta;
-using Tilemaps.Behaviours.Objects;
 using UnityEngine;
 
-namespace Tilemaps.Utils
-{
+
 	public class TileList
 	{
 		private readonly Dictionary<Vector3Int, List<RegisterTile>> _objects =
 			new Dictionary<Vector3Int, List<RegisterTile>>();
 
-		public List<RegisterTile> AllObjects => _objects.Values.SelectMany(x => x).ToList();
+		private static readonly IEnumerable<RegisterTile> emptyList = Enumerable.Empty<RegisterTile>();
+
+		public List<RegisterTile> AllObjects {
+			get {
+				List<RegisterTile> list = new List<RegisterTile>();
+				foreach ( List<RegisterTile> x in _objects.Values ) {
+					for ( var i = 0; i < x.Count; i++ ) {
+						list.Add( x[i] );
+					}
+				}
+
+				return list;
+			}
+		}
 
 		public void Add(Vector3Int position, RegisterTile obj)
 		{
@@ -25,20 +35,46 @@ namespace Tilemaps.Utils
 				_objects[position].Add(obj);
 			}
 		}
-
-		public List<RegisterTile> Get(Vector3Int position)
+		public bool HasObjects(Vector3Int position)
 		{
-			return _objects.ContainsKey(position) ? _objects[position] : new List<RegisterTile>();
+			return _objects.ContainsKey(position) && _objects[position].Count > 0;
+		}
+		public IEnumerable<RegisterTile> Get(Vector3Int position)
+		{
+			return _objects.ContainsKey(position) ? _objects[position] : emptyList;
 		}
 
-		public List<RegisterTile> Get(Vector3Int position, ObjectType type)
-		{
-			return Get(position).Where(x => x.ObjectType == type).ToList();
+		public IEnumerable<RegisterTile> Get(Vector3Int position, ObjectType type) {
+			if ( !HasObjects( position ) )
+			{
+				return emptyList;
+			}
+			var list = new List<RegisterTile>();
+			foreach ( RegisterTile x in Get( position ) )
+			{
+				if ( x.ObjectType == type ) {
+					list.Add( x );
+				}
+			}
+
+			return list;
 		}
 
-		public List<T> Get<T>(Vector3Int position) where T : RegisterTile
-		{
-			return Get(position).OfType<T>().ToList();
+		public IEnumerable<T> Get<T>(Vector3Int position) where T : RegisterTile {
+			if ( !HasObjects( position ) )
+			{
+				return Enumerable.Empty<T>();
+			}
+			var list = new List<T>();
+			foreach ( RegisterTile t in Get( position ) )
+			{
+				T unknown = t as T;
+				if ( t != null ) {
+					list.Add( unknown );
+				}
+			}
+
+			return list;
 		}
 
 		public RegisterTile GetFirst(Vector3Int position)
@@ -66,4 +102,3 @@ namespace Tilemaps.Utils
 			}
 		}
 	}
-}

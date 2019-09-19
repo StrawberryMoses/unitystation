@@ -1,27 +1,28 @@
-﻿using UnityEngine;
+using UnityEngine;
 using UnityEngine.UI;
+using UnityEngine.EventSystems;
 
-namespace UI
-{
-	public class ControlWalkRun : MonoBehaviour
+
+	public class ControlWalkRun : TooltipMonoBehaviour
 	{
 		private Image image;
 		public Sprite[] runWalkSprites;
+		public override string Tooltip => "run/walk toggle";
 
-		public bool running { get; set; }
+		public bool running { get; private set; } = true;
 
 		private void Start()
 		{
 			image = GetComponent<Image>();
 		}
 
-		/* 
-		   * Button OnClick methods
-		   */
+		/*
+		* Button OnClick methods
+		*/
 
 		public void RunWalk()
 		{
-			Debug.Log("RunWalk Button");
+			Logger.Log("RunWalk Button", Category.UI);
 
 			SoundManager.Play("Click01");
 
@@ -37,4 +38,3 @@ namespace UI
 			}
 		}
 	}
-}

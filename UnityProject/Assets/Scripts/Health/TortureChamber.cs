@@ -1,4 +1,4 @@
-﻿using PlayGroup;
+﻿/*
 using UnityEngine;
 
 public enum TortureSeverity
@@ -14,7 +14,7 @@ public class TortureChamber
 		var ps = player.GetComponent<PlayerScript>();
 		if ( !ps )
 		{
-			Debug.LogWarning("Cannot torture :( not a player");
+			Logger.LogWarningFormat("Cannot torture {0}, not a player.", Category.Security, player.name);
 			return;
 		}
 		Torture(ps, severity);
@@ -22,7 +22,7 @@ public class TortureChamber
 
 	public static void Torture(PlayerScript ps, TortureSeverity severity = TortureSeverity.M)
 	{
-		Debug.Log($"Player {ps.gameObject} is now being tortured with '{severity}' severity. Enjoy");
+		Logger.Log($"Player {ps.gameObject} is now being tortured with '{severity}' severity. Enjoy", Category.Security);
 		//todo: torture sequences
 		Bleed(ps, severity);
 		DropShit(ps, severity);
@@ -34,7 +34,8 @@ public class TortureChamber
 
 	private static void Bleed(PlayerScript ps, TortureSeverity severity)
 	{
-		ps.playerHealth.AddBloodLoss(( int ) Mathf.Pow(2, ( float ) severity));
+		BodyPartBehaviour bodyPart = ps.playerHealth.FindBodyPart(BodyPartType.Chest);
+		ps.playerHealth.bloodSystem.AddBloodLoss(( int ) Mathf.Pow(2, ( float ) severity), bodyPart);
 	}
 	private static void DropShit(PlayerScript ps, TortureSeverity severity)
 	{
@@ -52,7 +53,8 @@ public class TortureChamber
 	{
 		int randX = (int)severity * 100 * Random.Range(-5, 5);
 		int randY = (int)severity * 100 * Random.Range(-5, 5);
-		ps.playerSync.SetPosition(new Vector2(randX,randY));
+		ps.PlayerSync.SetPosition(new Vector2(randX,randY));
 	}
 
 }
+ */

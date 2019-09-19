@@ -1,6 +1,6 @@
-﻿using System.Collections.Generic;
-using UnityEngine;
+﻿using UnityEngine;
 using UnityEngine.SceneManagement;
+using System;
 
 /// <summary>
 ///     Handles the update methods for in game objects
@@ -11,8 +11,10 @@ public class UpdateManager : MonoBehaviour
 {
 	private static UpdateManager updateManager;
 
-	//List of all the objects to override UpdateMe method in Update
-	private readonly List<ManagedNetworkBehaviour> regularUpdate = new List<ManagedNetworkBehaviour>();
+	private event Action UpdateMe;
+	private event Action FixedUpdateMe;
+	private event Action LateUpdateMe;
+	private event Action UpdateAction;
 
 	public static UpdateManager Instance
 	{
@@ -28,17 +30,41 @@ public class UpdateManager : MonoBehaviour
 
 	public void Add(ManagedNetworkBehaviour updatable)
 	{
-		if (!regularUpdate.Contains(updatable))
-		{
-			regularUpdate.Add(updatable);
+		if (updatable.GetType().GetMethod(nameof(ManagedNetworkBehaviour.UpdateMe))?.DeclaringType == updatable.GetType())
+		{ //Avoiding duplicates:
+			UpdateMe -= updatable.UpdateMe;
+			UpdateMe += updatable.UpdateMe;
 		}
+
+		if (updatable.GetType().GetMethod(nameof(ManagedNetworkBehaviour.FixedUpdateMe))?.DeclaringType == updatable.GetType())
+		{
+			FixedUpdateMe -= updatable.FixedUpdateMe;
+			FixedUpdateMe += updatable.FixedUpdateMe;
+		}
+
+		if (updatable.GetType().GetMethod(nameof(ManagedNetworkBehaviour.LateUpdateMe))?.DeclaringType == updatable.GetType())
+		{
+			LateUpdateMe -= updatable.LateUpdateMe;
+			LateUpdateMe += updatable.LateUpdateMe;
+		}
+	}
+
+	public void Add(Action updatable)
+	{
+		UpdateAction -= updatable;
+		UpdateAction += updatable;
 	}
 
 	public void Remove(ManagedNetworkBehaviour updatable)
 	{
-		if (regularUpdate.Contains(updatable)) {
-			regularUpdate.Remove(updatable);
-		}
+		UpdateMe -= updatable.UpdateMe;
+		FixedUpdateMe -= updatable.FixedUpdateMe;
+		LateUpdateMe -= updatable.LateUpdateMe;
+	}
+
+	public void Remove(Action updatable)
+	{
+		UpdateAction -= updatable;
 	}
 
 	private void OnEnable()
@@ -56,19 +82,26 @@ public class UpdateManager : MonoBehaviour
 		Reset();
 	}
 
-	// Reset the references when the scene is changed
 	private void Reset()
 	{
-		regularUpdate.Clear();
+		UpdateMe = null;
+		FixedUpdateMe = null;
+		LateUpdateMe = null;
 	}
 
 	private void Update()
 	{
-		for (int i = 0; i < regularUpdate.Count; i++)
-		{
-			regularUpdate[i].UpdateMe();
-			regularUpdate[i].FixedUpdateMe();
-			regularUpdate[i].LateUpdateMe();
-		}
+		UpdateMe?.Invoke();
+		UpdateAction?.Invoke();
+	}
+
+	private void FixedUpdate()
+	{
+		FixedUpdateMe?.Invoke();
+	}
+
+	private void LateUpdate()
+	{
+		LateUpdateMe?.Invoke();
 	}
 }

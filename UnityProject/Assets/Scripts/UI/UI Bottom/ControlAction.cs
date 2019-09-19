@@ -1,155 +1,144 @@
-using PlayGroup;
-using PlayGroups.Input;
 using UnityEngine;
 using UnityEngine.UI;
 
-namespace UI
+public class ControlAction : MonoBehaviour
 {
-	public class ControlAction : MonoBehaviour
+	public Image throwImage;
+	public Sprite[] throwSprites;
+
+	public Image pullImage;
+
+	private void Start()
 	{
-		public Image throwImage;
-		public Sprite[] throwSprites;
-		public bool azerty; //Hacky fix due to AZERTY keyboard users using Q to go left.
+		UIManager.IsThrow = false;
 
-		private void Start()
+		pullImage.enabled = false;
+	}
+
+	/*
+	 * Button OnClick methods
+	 */
+
+	/// <summary>
+	/// Perform the resist action
+	/// </summary>
+	public void Resist()
+	{
+		// TODO implement resist functionality once handcuffs and things are in
+		SoundManager.Play("Click01");
+		Logger.Log("Resist Button", Category.UI);
+	}
+
+	/// <summary>
+	/// Perform the drop action
+	/// </summary>
+	public void Drop()
+	{
+		PlayerScript lps = PlayerManager.LocalPlayerScript;
+		if (!lps || lps.canNotInteract())
 		{
+			return;
+		}
+		UI_ItemSlot currentSlot = UIManager.Hands.CurrentSlot;
+		//			Vector3 dropPos = lps.gameObject.transform.position;
+		if (currentSlot.Item == null)
+		{
+			return;
+		}
+		//            if ( isNotMovingClient(lps) )
+		//            {
+		//               // Full client simulation(standing still)
+		//                var placedOk = currentSlot.PlaceItem(dropPos);
+		//                if ( !placedOk )
+		//                {
+		//                    Logger.Log("Client dropping error");
+		//                }
+		//            }
+		//            else
+		//            {
+		//Only clear slot(while moving, as prediction is shit in this situation)
+		//			GameObject dropObj = currentSlot.Item;
+		//			CustomNetTransform cnt = dropObj.GetComponent<CustomNetTransform>();
+		//			It is converted to LocalPos in transformstate struct
+		//			cnt.AppearAtPosition(PlayerManager.LocalPlayer.transform.position);
+		//            }
+		//Message
+
+		if(UIManager.IsThrow == true)
+		{
+			Throw(); // Disable throw
+		}
+		UIManager.CheckStorageHandlerOnMove(currentSlot.Item);
+		//forceClientInform = true because we aren't doing prediction any more.
+		lps.playerNetworkActions.CmdDropItem(currentSlot.equipSlot);
+		SoundManager.Play("Click01");
+		Logger.Log("Drop Button", Category.UI);
+	}
+
+	// private static bool isNotMovingClient(PlayerScript lps)
+	// {
+	// 	return !lps.isServer && !lps.playerMove.isMoving;
+	// }
+
+	/// <summary>
+	/// Throw mode toggle. Actual throw is in <see cref="MouseInputController.CheckThrow()"/>
+	/// </summary>
+	public void Throw(bool forceDisable = false)
+	{
+		if (forceDisable)
+		{
+			Logger.Log("Throw force disabled", Category.UI);
 			UIManager.IsThrow = false;
+			throwImage.sprite = throwSprites[0];
+			return;
 		}
 
-		/* 
-		   * Button OnClick methods
-		   */
-
-		private void Update()
-		{
-			CheckKeyboardInput();
-		}
-
-		private void CheckKeyboardInput()
-		{
-			if (azerty)
-			{
-				if (Input.GetKeyDown(KeyCode.A))
-				{
-					Drop();
-				}
-			} else {
-				if (Input.GetKeyDown(KeyCode.Q))
-				{
-					Drop();
-				}
-			}
-
-			if (Input.GetKeyDown(KeyCode.R))
-			{
-				Throw();
-			}
-			
-			if (Input.GetKeyDown(KeyCode.X))
-			{
-				UIManager.Hands.Swap();
-			}
-
-			if (Input.GetKeyDown(KeyCode.E))
-			{
-				UIManager.Hands.Use();
-			}
-
-            if (Input.GetKeyDown(KeyCode.Alpha1))
-            {
-                UIManager.Intent.IntentHotkey(0);
-            }
-
-            if (Input.GetKeyDown(KeyCode.Alpha2))
-            {
-                UIManager.Intent.IntentHotkey(1);
-            }
-
-            if (Input.GetKeyDown(KeyCode.Alpha3))
-            {
-                UIManager.Intent.IntentHotkey(2);
-            }
-
-            if (Input.GetKeyDown(KeyCode.Alpha4))
-            {
-                UIManager.Intent.IntentHotkey(3);
-            }
-        }
-
-		public void Resist()
-		{
-			SoundManager.Play("Click01");
-			Debug.Log("Resist Button");
-		}
-
-		public void Drop()
+		// See if requesting to enable or disable throw
+		if (throwImage.sprite == throwSprites[0] && UIManager.IsThrow == false)
 		{
 			PlayerScript lps = PlayerManager.LocalPlayerScript;
+			UI_ItemSlot currentSlot = UIManager.Hands.CurrentSlot;
+
+			// Check if player can throw
 			if (!lps || lps.canNotInteract())
 			{
 				return;
 			}
-			UI_ItemSlot currentSlot = UIManager.Hands.CurrentSlot;
-//			Vector3 dropPos = lps.gameObject.transform.position;
-			if (!currentSlot.CanPlaceItem())
-			{
-				return;
-			}
-			//            if ( isNotMovingClient(lps) )
-			//            {
-			//               // Full client simulation(standing still)
-			//                var placedOk = currentSlot.PlaceItem(dropPos);
-			//                if ( !placedOk )
-			//                {
-			//                    Debug.Log("Client dropping error");
-			//                }
-			//            }
-			//            else
-			//            {
-			//Only clear slot(while moving, as prediction is shit in this situation)
-//			GameObject dropObj = currentSlot.Item;
-//			CustomNetTransform cnt = dropObj.GetComponent<CustomNetTransform>();
-//			It is converted to LocalPos in transformstate struct
-//			cnt.AppearAtPosition(PlayerManager.LocalPlayer.transform.position);
-			currentSlot.Clear();
-			//            }
-			//Message
-			lps.playerNetworkActions.RequestDropItem(currentSlot.eventName, false);
+
+			// Enable throw
+			Logger.Log("Throw Button Enabled", Category.UI);
 			SoundManager.Play("Click01");
-			Debug.Log("Drop Button");
+			UIManager.IsThrow = true;
+			throwImage.sprite = throwSprites[1];
 		}
-
-		private static bool isNotMovingClient(PlayerScript lps)
+		else if (throwImage.sprite == throwSprites[1] && UIManager.IsThrow == true)
 		{
-			return !lps.isServer && !lps.playerMove.isMoving;
+			// Disable throw
+			Logger.Log("Throw Button Disabled", Category.UI);
+			UIManager.IsThrow = false;
+			throwImage.sprite = throwSprites[0];
 		}
+	}
 
-		/// Throw mode toggle. Actual throw is in
-		/// <see cref="InputController.CheckThrow()"/>
-		public void Throw()
+	/// <summary>
+	/// Stops pulling whatever we're pulling
+	/// </summary>
+	public void StopPulling()
+	{
+		if (pullImage && pullImage.enabled)
 		{
-			PlayerScript lps = PlayerManager.LocalPlayerScript;
-			UI_ItemSlot currentSlot = UIManager.Hands.CurrentSlot;
-			if (!lps || lps.canNotInteract() || !currentSlot.CanPlaceItem())
-			{
-				UIManager.IsThrow = false;
-				throwImage.sprite = throwSprites[0];
-				return;
-			}
+			PlayerScript ps = PlayerManager.LocalPlayerScript;
 
-			SoundManager.Play("Click01");
-//			Debug.Log("Throw Button");
-
-			if (!UIManager.IsThrow)
-			{
-				UIManager.IsThrow = true;
-				throwImage.sprite = throwSprites[1];
-			}
-			else
-			{
-				UIManager.IsThrow = false;
-				throwImage.sprite = throwSprites[0];
-			}
+			ps.pushPull.CmdStopPulling();
 		}
+	}
+
+	/// <summary>
+	/// Updates whether or not the "Stop Pulling" button is shown
+	/// </summary>
+	/// <param name="show">Whether or not to show the button</param>
+	public void UpdatePullingUI(bool show)
+	{
+		pullImage.enabled = show;
 	}
 }
